@@ -1,6 +1,7 @@
+[![hacs][hacs-badge]][hacs-url]
 [![GitHub Release][releases-shield]][releases]
 [![GitHub License][license-shield]][license]
-[![hacs][hacs-badge]][hacs-url]
+[![GitHub All Releases][downloads_total_shield]][releases]
 
 # Neatsvor Integration for Home Assistant
 
