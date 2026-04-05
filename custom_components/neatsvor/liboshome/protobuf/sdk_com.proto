@@ -1,0 +1,87 @@
+syntax = "proto3";
+
+package bvsdk;
+
+import "google/protobuf/any.proto";
+
+message MqttMsgHeader {
+    int32 version = 1;
+    string mac_address = 2;
+    string login_name = 3;
+    repeated int32 cmd_id = 4;
+    CmdType cmd_type = 5;
+
+    enum CmdType {
+        kAppRequest = 0;
+        kAppCmd = 1;
+        kDeviceReport = 2;
+        kServiceRequest = 3;
+    }
+}
+
+message MqttMsg {
+    MqttMsgHeader header = 1;
+    repeated google.protobuf.Any body = 2;
+}
+
+message MqttMsgBody {
+    int32 int_value = 1;
+    bool bool_value = 2;
+    string string_value = 3;
+}
+
+message Point {
+    int32 x = 1;
+    int32 y = 2;
+}
+
+message Point3D {
+    int32 x = 1;
+    int32 y = 2;
+    int32 angle = 3;
+}
+
+message Line {
+    int32 x0 = 1;
+    int32 y0 = 2;
+    int32 x1 = 3;
+    int32 y1 = 4;
+}
+
+message Polygon {
+    int32 number = 1;
+    repeated Point points = 2;
+}
+
+message WifiInfo {
+    string mac_address = 1;
+    string ip_address = 2;
+    string ssid = 3;
+    bool encrypt = 4;
+    string psk = 5;
+    int32 strength = 6;
+}
+
+enum OnlineCmdId {
+    kOnlineInfo = 0;
+}
+
+enum OtaCmdId {
+    kOtaMessage = 0;
+    kOtaProgress = 1;
+}
+
+enum ServerCmdId {
+    kGetDeviceLog = 0;
+    kShellCmd = 1;
+}
+
+enum StateCmdId {
+    kDeviceState = 0;
+    kDevBatteryLevel = 1;
+}
+
+enum LoginNameCmdId {
+    kHomeStatus = 0;
+    kDeviceInfo = 1;
+}

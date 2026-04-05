@@ -1,0 +1,31 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Neatsvor Vacuum",
+        "description": "Please enter your BlackVision account credentials.\n\nYour password is only used for initial authentication and is not stored.",
+        "data": {
+          "email": "Email",
+          "password": "Password",
+          "region": "Region"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Invalid email or password",
+      "cannot_connect": "Failed to connect to server",
+      "unknown": "Unknown error"
+    },
+    "abort": {
+      "already_configured": "Device is already configured"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Neatsvor Settings",
+        "description": "**Device:** {device_name}\n**MAC:** {device_mac}\n**Email:** {email}\n\nAdditional settings are not yet implemented."
+      }
+    }
+  }
+}
