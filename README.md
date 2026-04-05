@@ -6,6 +6,16 @@
 
 Интеграция для управления пылесосами Neatsvor (и другими под брендом Black Vision) в Home Assistant.
 
+<img width="498" height="987" alt="image" src="https://github.com/user-attachments/assets/6419f86e-c2d4-4ad0-9c87-4f2353e58050" />
+<img width="502" height="987" alt="image" src="https://github.com/user-attachments/assets/9ac0f6e0-51f0-4c3e-8b10-6ff4e5e7264c" />
+<img width="498" height="1006" alt="image" src="https://github.com/user-attachments/assets/074ffd55-1ffa-4e4f-979d-6359d8c845ec" />
+<img width="497" height="1080" alt="image" src="https://github.com/user-attachments/assets/512a0f42-579d-4dc6-a25d-46958b33481d" />
+<img width="505" height="1032" alt="image" src="https://github.com/user-attachments/assets/1b3a7ea5-862f-4392-ac62-f80aa16cabd2" />
+
+
+
+
+
 ## Возможности
 
 - 🎮 **Полное управление**: запуск/пауза/остановка уборки, возврат на базу
