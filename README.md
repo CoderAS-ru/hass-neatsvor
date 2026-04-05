@@ -1,8 +1,8 @@
-# Neatsvor for Home Assistant
-
 [![GitHub Release][releases-shield]][releases]
 [![GitHub License][license-shield]][license]
 [![hacs][hacs-badge]][hacs-url]
+
+# Neatsvor Integration for Home Assistant
 
 Интеграция для управления пылесосами Neatsvor (и другими под брендом Black Vision) в Home Assistant.
 
@@ -57,14 +57,17 @@ zones:
   service_data:
     entity_id: vacuum.neatsvor_vacuum
     zones: "[[x1, y1, x2, y2, 1]]"
-    
-Сервисы
-Сервис	Описание
-neatsvor.zone_clean	Зональная уборка
-neatsvor.room_clean	Уборка комнаты(т)
-neatsvor.save_reference_map	Сохранить текущую карту как эталон
-neatsvor.restore_reference_map	Восстановить карту из эталона
-neatsvor.save_map_to_cloud	Сохранить карту в облако
+```
+
+## Сервисы
+|Сервис	                        |Описание                            | 
+|-------------------------------|------------------------------------|
+|neatsvor.zone_clean	          | Зональная уборка                   |
+|neatsvor.room_clean	          | Уборка комнаты                     |
+|neatsvor.save_reference_map	  | Сохранить текущую карту как эталон |
+|neatsvor.restore_reference_map	| Восстановить карту из эталона      |
+|neatsvor.save_map_to_cloud	    | Сохранить карту в облако           |
+
 Поддерживаемые устройства
 Neatsvor S700
 
@@ -75,7 +78,7 @@ Neatsvor S700
 
 Редактирование карты (разделение/объединение комнат) не реализовано
 
-Лицензия
+## Лицензия
 MIT
 
 [releases-shield]: https://img.shields.io/github/v/release/YOUR_USERNAME/hass-neatsvor
