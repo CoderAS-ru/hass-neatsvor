@@ -2260,10 +2260,14 @@ class NeatsvorMalfunctionSensor(CoordinatorEntity, SensorEntity):
     @property
     def native_value(self) -> str:
         """Return malfunction description."""
-        if not self.coordinator.data:
+        if not self.coordinator or not self.coordinator.data:
             return "Unknown"
         
-        error_code = self.coordinator.data.get("malfunction_code", 0)
+        # Добавляем безопасную проверку
+        error_code = self.coordinator.data.get("malfunction_code")
+        if error_code is None:
+            return "Unknown"
+        
         language = self.hass.config.language if self.hass else "en"
         
         if language == "ru":
@@ -2308,20 +2312,23 @@ class NeatsvorMaintenanceSensor(CoordinatorEntity, SensorEntity):
     @property
     def native_value(self):
         """Возвращаем общий статус."""
-        if not self.coordinator.data:
+        if not self.coordinator or not self.coordinator.data:
             return "Unknown"
         
         # Проверяем износ расходников
         consumables = self.coordinator.data.get("consumables", {})
+        if not consumables:
+            return "OK"
         
         # Если какой-то расходник ниже 15% - Warning
         for key in ["filter", "side_brush", "main_brush"]:
             cons = consumables.get(key)
-            if cons and cons.get("remaining_percent", 100) < 15:
+            if cons and isinstance(cons, dict) and cons.get("remaining_percent", 100) < 15:
                 return "Warning"
         
         # Если есть ошибка - Error
-        if self.coordinator.data.get("malfunction_code", 0) > 0:
+        malfunction = self.coordinator.data.get("malfunction_code")
+        if malfunction and malfunction > 0:
             return "Error"
             
         return "OK"
@@ -2329,7 +2336,7 @@ class NeatsvorMaintenanceSensor(CoordinatorEntity, SensorEntity):
     @property
     def extra_state_attributes(self):
         """Дополнительные атрибуты для экспорта в УДЯ."""
-        if not self.coordinator.data:
+        if not self.coordinator or not self.coordinator.data:
             return {}
         
         data = self.coordinator.data
@@ -2342,22 +2349,24 @@ class NeatsvorMaintenanceSensor(CoordinatorEntity, SensorEntity):
                           ("main_brush", "brush_lifetime"),
                           ("side_brush", "side_brush_lifetime")]:
             cons = consumables.get(key)
-            if cons:
+            if cons and isinstance(cons, dict):
                 attributes[name] = cons.get("remaining_percent", 0)
                 attributes[f"{name}_hours"] = cons.get("remaining_hours", 0)
+            else:
+                attributes[name] = 0
         
         # Статистика
         stats = data.get("statistics", {})
-        attributes["total_cleaned_area"] = stats.get("total_clean_area", 0)
-        attributes["total_cleaned_time"] = stats.get("total_clean_time", 0)
-        attributes["total_cleanings"] = stats.get("total_cleanings", 0)
+        attributes["total_cleaned_area"] = stats.get("total_clean_area", 0) if stats else 0
+        attributes["total_cleaned_time"] = stats.get("total_clean_time", 0) if stats else 0
+        attributes["total_cleanings"] = stats.get("total_cleanings", 0) if stats else 0
         
         # Последняя уборка
         last = data.get("last_clean", {})
-        if last.get("clean_time"):
+        if last and last.get("clean_time"):
             attributes["last_clean_date"] = last["clean_time"].isoformat() if last["clean_time"] else None
-        attributes["last_clean_area"] = last.get("clean_area", 0)
-        attributes["last_clean_duration"] = last.get("clean_duration", 0)
+        attributes["last_clean_area"] = last.get("clean_area", 0) if last else 0
+        attributes["last_clean_duration"] = last.get("clean_duration", 0) if last else 0
         
         # Батарея
         attributes["battery_level"] = data.get("battery_level", 0)
