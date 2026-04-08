@@ -21,11 +21,11 @@ class MqttMessageRouter:
         # Initialize ALL handlers
         self._handlers: Dict[str, Any] = {
             'MAP_': MapMessageHandler(mac),
-            'MAP_UNZIP_': MapMessageHandler(mac),  # Same handler
+            'MAP_UNZIP_': MapMessageHandler(mac),
             'STATE_': StateMessageHandler(mac),
             'DP_DEV_': DpMessageHandler(mac),
-            'DEVICE_ON_LINE_': None,  # No handling
-            'DP_APP_': None,          # No handling
+            'DEVICE_ON_LINE_': self._handle_device_online,
+            'DP_APP_': self._handle_dp_app,
         }
 
         # Lists for callbacks
@@ -38,7 +38,7 @@ class MqttMessageRouter:
         topic = msg.topic
         payload = msg.payload
 
-        # IMPORTANT: convert topic to string
+        # Convert topic to string
         topic_str = str(topic)
 
         # Log all incoming messages for debugging
@@ -47,20 +47,19 @@ class MqttMessageRouter:
         # Find appropriate handler by topic prefix
         for prefix, handler in self._handlers.items():
             if topic_str.startswith(prefix):
-                if handler is None:
-                    _LOGGER.debug("Topic without handler: %s", topic_str)
-                    return
-
                 try:
-                    if prefix in ['MAP_', 'MAP_UNZIP_']:
+                    # Handle callable handlers (for DEVICE_ON_LINE_, DP_APP_)
+                    if callable(handler):
+                        await handler(payload)  # Pass only payload
+                    else:
+                        # Handler is a class instance with parse method
                         parsed_data = await handler.parse(payload)
-                        await self._notify_map_callbacks(parsed_data)
-                    elif prefix == 'STATE_':
-                        parsed_data = await handler.parse(payload)
-                        await self._notify_state_callbacks(parsed_data)
-                    elif prefix == 'DP_DEV_':
-                        parsed_data = await handler.parse(payload)
-                        await self._notify_dp_callbacks(parsed_data)
+                        if prefix in ['MAP_', 'MAP_UNZIP_']:
+                            await self._notify_map_callbacks(parsed_data)
+                        elif prefix == 'STATE_':
+                            await self._notify_state_callbacks(parsed_data)
+                        elif prefix == 'DP_DEV_':
+                            await self._notify_dp_callbacks(parsed_data)
                     return
                 except Exception as e:
                     _LOGGER.error("Error in handler %s: %s", prefix, e)
@@ -104,6 +103,53 @@ class MqttMessageRouter:
                     await loop.run_in_executor(None, callback, dp_data)
             except Exception as e:
                 _LOGGER.error("Error in dp callback: %s", e)
+
+    async def _handle_dp_app(self, payload):
+        """Handler for DP_APP_ topics (command confirmations)."""
+        try:
+            # Try to parse as JSON if it's a string
+            if isinstance(payload, bytes):
+                payload = payload.decode('utf-8')
+            
+            _LOGGER.debug("DP_APP_ command confirmation received: %s", payload[:200] if len(payload) > 200 else payload)
+            
+            # Notify DP callbacks if needed
+            if self._dp_callbacks:
+                # Try to parse as list of DPs
+                import json
+                try:
+                    data = json.loads(payload)
+                    if isinstance(data, list):
+                        await self._notify_dp_callbacks(data)
+                    elif isinstance(data, dict) and 'dps' in data:
+                        await self._notify_dp_callbacks(data['dps'])
+                except json.JSONDecodeError:
+                    _LOGGER.debug("DP_APP_ payload not JSON: %s", payload[:100])
+                    
+        except Exception as e:
+            _LOGGER.error("Error handling DP_APP_ message: %s", e)
+            
+    async def _handle_device_online(self, payload):
+        """Handler for DEVICE_ON_LINE_ topics."""
+        try:
+            if isinstance(payload, bytes):
+                payload = payload.decode('utf-8')
+            
+            _LOGGER.info("Device online status update: %s", payload[:100] if len(payload) > 100 else payload)
+            
+            # Parse online status
+            import json
+            try:
+                data = json.loads(payload)
+                is_online = data.get('online', False) if isinstance(data, dict) else False
+                _LOGGER.info("Device online: %s", is_online)
+            except json.JSONDecodeError:
+                # Maybe just plain text
+                is_online = payload.lower() in ['true', '1', 'online']
+                _LOGGER.info("Device online (text): %s", is_online)
+                
+        except Exception as e:
+            _LOGGER.error("Error handling DEVICE_ON_LINE_ message: %s", e)
 
     # === Public API for callback registration ===
     def register_map_callback(self, callback: Callable):

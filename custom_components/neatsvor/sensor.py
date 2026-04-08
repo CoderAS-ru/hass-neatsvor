@@ -2005,15 +2005,15 @@ class NeatsvorCleanHistorySensor(CoordinatorEntity, SensorEntity):
             if not history_dir.exists():
                 return
 
-            # Get all PNG files
-            all_maps = list(history_dir.glob("*.png"))
+            # Get all PNG files - FIXED: use asyncio.to_thread
+            all_maps = await asyncio.to_thread(lambda: list(history_dir.glob("*.png")))
 
             # If less than 50 files, do nothing
             if len(all_maps) <= 50:
                 return
 
-            # Sort by modification time (newest last)
-            all_maps.sort(key=lambda x: x.stat().st_mtime, reverse=True)
+            # Sort by modification time (newest last) - also needs to_thread
+            all_maps = await asyncio.to_thread(lambda: sorted(all_maps, key=lambda x: x.stat().st_mtime, reverse=True))
 
             # Keep first 50 (newest), delete the rest
             maps_to_delete = all_maps[50:]
@@ -2022,14 +2022,13 @@ class NeatsvorCleanHistorySensor(CoordinatorEntity, SensorEntity):
             for map_file in maps_to_delete:
                 try:
                     # Extract record_id from filename
-                    # Format: cleanTime_recordId.png
                     record_id = None
                     if '_' in map_file.stem:
                         parts = map_file.stem.split('_')
                         if len(parts) >= 2 and parts[-1].isdigit():
                             record_id = int(parts[-1])
 
-                    map_file.unlink()
+                    await asyncio.to_thread(map_file.unlink)
                     deleted_count += 1
                     _LOGGER.debug("Deleted old map: %s", map_file.name)
 

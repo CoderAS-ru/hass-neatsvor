@@ -53,7 +53,6 @@ class NeatsvorVacuum(CoordinatorEntity, StateVacuumEntity):
             | VacuumEntityFeature.PAUSE
             | VacuumEntityFeature.STOP
             | VacuumEntityFeature.RETURN_HOME
-            | VacuumEntityFeature.BATTERY
             | VacuumEntityFeature.STATUS
             | VacuumEntityFeature.FAN_SPEED
             | VacuumEntityFeature.LOCATE
@@ -121,13 +120,6 @@ class NeatsvorVacuum(CoordinatorEntity, StateVacuumEntity):
                 return value
 
         return VacuumActivity.IDLE
-
-    @property
-    def battery_level(self) -> int | None:
-        """Return battery level."""
-        if not self.coordinator.data:
-            return None
-        return self.coordinator.data.get("battery_level")
 
     @property
     def fan_speed(self) -> Optional[str]:
