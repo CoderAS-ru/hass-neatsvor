@@ -19,7 +19,7 @@
 
 # Neatsvor Integration for Home Assistant
 
-Интеграция для управления пылесосами Neatsvor (и другими под брендом Black Vision) в Home Assistant.
+Интеграция для управления пылесосами Neatsvor (и другими, на платформе [Black Vision](https://www.blackvision.net/), управляемыми посредством приложения [LibosHome](https://play.google.com/store/apps/details?id=com.blackvision.libos2)) в Home Assistant.
 
 <img width="498" height="987" alt="image" src="https://github.com/user-attachments/assets/6419f86e-c2d4-4ad0-9c87-4f2353e58050" />
 <img width="502" height="987" alt="image" src="https://github.com/user-attachments/assets/9ac0f6e0-51f0-4c3e-8b10-6ff4e5e7264c" />
