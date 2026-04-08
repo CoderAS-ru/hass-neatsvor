@@ -1,12 +1,20 @@
 [![HACS Default][hacs_shield]][hacs]
 [![GitHub Latest Release][releases_shield]][latest_release]
 [![GitHub All Releases][downloads_total_shield]][releases]
+[![GitHub Views][views_shield]][repo]
+[![GitHub Visitors][visitors_shield]][repo]
 
 [hacs_shield]: https://img.shields.io/static/v1.svg?label=HACS&message=Default&style=popout&color=green&labelColor=41bdf5&logo=HomeAssistantCommunityStore&logoColor=white
 [hacs]: https://hacs.xyz/docs/default_repositories
 
 [releases_shield]: https://img.shields.io/github/release/CoderAS-ru/hass-neatsvor.svg?style=popout
 [latest_release]: https://github.com/CoderAS-ru/hass-neatsvor/releases/latest
+
+[downloads_total_shield]: https://img.shields.io/github/downloads/CoderAS-ru/hass-neatsvor/total
+
+[views_shield]: https://img.shields.io/github/search/CoderAS-ru/hass-neatsvor/views?style=popout&label=Views&color=blue
+[visitors_shield]: https://img.shields.io/github/search/CoderAS-ru/hass-neatsvor/visitors?style=popout&label=Visitors&color=blue
+[repo]: https://github.com/CoderAS-ru/hass-neatsvor
 
 
 # Neatsvor Integration for Home Assistant
