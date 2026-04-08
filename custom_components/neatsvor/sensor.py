@@ -214,6 +214,10 @@ async def async_setup_entry(
     entities.append(NeatsvorCloudMapPresetSensor(coordinator))
     entities.append(NeatsvorPresetComparisonSensor(coordinator))
     _LOGGER.info("Added preset sensors")
+    
+    # Maintenance sensor for Yandex Smart Home
+    entities.append(NeatsvorMaintenanceSensor(coordinator))
+    _LOGGER.info("Added maintenance sensor for Yandex Smart Home")    
 
     async_add_entities(entities)
     _LOGGER.info("Created %s sensors", len(entities))
@@ -2285,3 +2289,77 @@ class NeatsvorMalfunctionSensor(CoordinatorEntity, SensorEntity):
         if not self.coordinator.data:
             return False
         return True
+
+        
+class NeatsvorMaintenanceSensor(CoordinatorEntity, SensorEntity):
+    """Виртуальный сенсор для обслуживания пылесоса."""
+    
+    _attr_has_entity_name = True
+    _attr_translation_key = "maintenance"
+    
+    def __init__(self, coordinator):
+        """Initialize."""
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.device_id}_maintenance"
+        self._attr_device_info = coordinator.device_info
+        self._attr_icon = "mdi:robot-vacuum"
+        self._attr_native_value = "OK"
+        
+    @property
+    def native_value(self):
+        """Возвращаем общий статус."""
+        if not self.coordinator.data:
+            return "Unknown"
+        
+        # Проверяем износ расходников
+        consumables = self.coordinator.data.get("consumables", {})
+        
+        # Если какой-то расходник ниже 15% - Warning
+        for key in ["filter", "side_brush", "main_brush"]:
+            cons = consumables.get(key)
+            if cons and cons.get("remaining_percent", 100) < 15:
+                return "Warning"
+        
+        # Если есть ошибка - Error
+        if self.coordinator.data.get("malfunction_code", 0) > 0:
+            return "Error"
+            
+        return "OK"
+    
+    @property
+    def extra_state_attributes(self):
+        """Дополнительные атрибуты для экспорта в УДЯ."""
+        if not self.coordinator.data:
+            return {}
+        
+        data = self.coordinator.data
+        consumables = data.get("consumables", {})
+        
+        attributes = {}
+        
+        # Расходники
+        for key, name in [("filter", "filter_lifetime"), 
+                          ("main_brush", "brush_lifetime"),
+                          ("side_brush", "side_brush_lifetime")]:
+            cons = consumables.get(key)
+            if cons:
+                attributes[name] = cons.get("remaining_percent", 0)
+                attributes[f"{name}_hours"] = cons.get("remaining_hours", 0)
+        
+        # Статистика
+        stats = data.get("statistics", {})
+        attributes["total_cleaned_area"] = stats.get("total_clean_area", 0)
+        attributes["total_cleaned_time"] = stats.get("total_clean_time", 0)
+        attributes["total_cleanings"] = stats.get("total_cleanings", 0)
+        
+        # Последняя уборка
+        last = data.get("last_clean", {})
+        if last.get("clean_time"):
+            attributes["last_clean_date"] = last["clean_time"].isoformat() if last["clean_time"] else None
+        attributes["last_clean_area"] = last.get("clean_area", 0)
+        attributes["last_clean_duration"] = last.get("clean_duration", 0)
+        
+        # Батарея
+        attributes["battery_level"] = data.get("battery_level", 0)
+        
+        return attributes

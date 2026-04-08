@@ -181,6 +181,17 @@ CONSUMABLE_SIDE_BRUSH = "side_brush"
 CONSUMABLE_MAIN_BRUSH = "main_brush"
 CONSUMABLE_FILTER = "filter"
 
+# Yandex Smart Home custom types
+CUSTOM_TYPES = {
+    "lifetime.filter": "devices.properties.custom.lifetime.filter",
+    "lifetime.brush": "devices.properties.custom.lifetime.brush", 
+    "lifetime.side_brush": "devices.properties.custom.lifetime.side_brush",
+    "area.total": "devices.properties.custom.area.total",
+    "area.last": "devices.properties.custom.area.last",
+    "time.total": "devices.properties.custom.time.total",
+    "time.last": "devices.properties.custom.time.last",
+}
+
 # Room cleaning commands
 ROOM_CLEAN_DP = 31
 ROOM_CLEAN_ATTR_DP = 45
