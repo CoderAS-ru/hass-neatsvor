@@ -67,7 +67,7 @@
 
 ## Зональная уборка
 
-Для использования зональной уборки необходимо установить [xiaomi-vacuum-map-card](https://github.com/PiotrMachowski/lovelace-xiaomi-vacuum-map-card):
+Для использования зональной уборки необходимо установить [lovelace-xiaomi-vacuum-map-card](https://github.com/PiotrMachowski/lovelace-xiaomi-vacuum-map-card):
 
 ```yaml
 type: custom:xiaomi-vacuum-map-card
