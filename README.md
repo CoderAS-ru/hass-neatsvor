@@ -33,7 +33,7 @@
 
 - 🎮 **Полное управление**: запуск/пауза/остановка уборки, возврат на базу
 - 🗺️ **Живая карта**: отображение карты помещения с позицией робота
-- 📍 **Зональная уборка**: выбор зоны на карте для уборки (требуется `xiaomi-vacuum-map-card`)
+- 📍 **Зональная уборка**: выбор зоны на карте для уборки (требуется [lovelace-xiaomi-vacuum-map-card](https://github.com/PiotrMachowski/lovelace-xiaomi-vacuum-map-card))
 - 🧹 **Уборка комнат**: возможность уборки отдельных комнат
 - 💧 **Регулировка подачи воды** (для моделей с режимом влажной уборки)
 - 💨 **Регулировка мощности всасывания**
@@ -104,10 +104,3 @@ Neatsvor S700
 
 ## Лицензия
 MIT
-
-[releases-shield]: https://img.shields.io/github/v/release/YOUR_USERNAME/hass-neatsvor
-[releases]: https://github.com/YOUR_USERNAME/hass-neatsvor/releases
-[license-shield]: https://img.shields.io/github/license/YOUR_USERNAME/hass-neatsvor
-[license]: https://github.com/YOUR_USERNAME/hass-neatsvor/blob/main/LICENSE
-[hacs-badge]: https://img.shields.io/badge/HACS-Default-orange.svg
-[hacs-url]: https://github.com/hacs/integration
