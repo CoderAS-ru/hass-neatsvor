@@ -19,7 +19,7 @@
 
 # Neatsvor Integration for Home Assistant
 
-Интеграция для управления пылесосами Neatsvor (и другими, на платформе [Black Vision](https://www.blackvision.net/), управляемыми посредством приложения [LibosHome](https://play.google.com/store/apps/details?id=com.blackvision.libos2)) в Home Assistant.
+Интеграция для управления пылесосами Neatsvor (и другими, на платформе [BlackVision](https://www.blackvision.net/), управляемыми посредством приложения [LibosHome](https://play.google.com/store/apps/details?id=com.blackvision.libos2)) в Home Assistant.
 
 <pre>
 <img height="400" alt="image 1" src="https://github.com/user-attachments/assets/6419f86e-c2d4-4ad0-9c87-4f2353e58050" /> <img height="400" alt="image 2" src="https://github.com/user-attachments/assets/9ac0f6e0-51f0-4c3e-8b10-6ff4e5e7264c" /> <img height="400" alt="image 3" src="https://github.com/user-attachments/assets/074ffd55-1ffa-4e4f-979d-6359d8c845ec" /> <img height="400" alt="image 4" src="https://github.com/user-attachments/assets/512a0f42-579d-4dc6-a25d-46958b33481d" /> <img height="400" alt="image 5" src="https://github.com/user-attachments/assets/1b3a7ea5-862f-4392-ac62-f80aa16cabd2" />
@@ -54,7 +54,7 @@
 
 ## Настройка
 
-Устройство (робот) должно быть подключено к приложению LibosHome!
+Устройство (робот) должно быть подключено именно к приложению LibosHome!
 1. Перейдите в **Настройки → Устройства и сервисы → Добавить интеграцию**
 2. Найдите "Neatsvor"
 3. Введите email и пароль от аккаунта в приложении LibosHome
@@ -88,15 +88,20 @@ zones:
 |neatsvor.restore_reference_map	| Восстановить карту из эталона      |
 |neatsvor.save_map_to_cloud	    | Сохранить карту в облако           |
 
-Поддерживаемые устройства
-Neatsvor S700
+## Поддерживаемые устройства
+### Neatsvor 
+  - [S700](https://neatsvor.ru/product/productDetail?spuId=28)
 
-Другие устройства платформы Black Vision/Neatsvor (тестируются)
+Другие устройства платформы BlackVision/Neatsvor (тестируются)
 
-Известные ограничения
-Зональная уборка требует карты с origin (0,0) - работает на большинстве устройств
+## Известные ограничения
+<b>Устройство должно быть зарегистрированно и подключено именно в приложении LibosHome!</b>
 
-Редактирование карты (разделение/объединение комнат) не реализовано
+Интеграция не поддерживает устройства, подключенные к приложениям Neatsvor или JoyLife!
+
+Зональная уборка требует карты с origin (0,0) - работает на большинстве устройств.
+
+Редактирование карты (разделение/объединение комнат) не реализовано.
 
 ## Лицензия
 MIT
