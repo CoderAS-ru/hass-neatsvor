@@ -33,8 +33,6 @@ class NeatsvorCoordinator(DataUpdateCoordinator):
         self._rest_failures = 0
         self._max_rest_failures = 3
         self._last_rest_success: Optional[datetime] = None
-        
-        self._update_lock = asyncio.Lock()
 
         # References to cloud map entities
         self.cloud_maps_sensor = None
@@ -104,118 +102,117 @@ class NeatsvorCoordinator(DataUpdateCoordinator):
 
     async def _async_update_data(self) -> Dict[str, Any]:
         """Fetch data from vacuum."""
-        async with self._update_lock:
-            try:
-                if not self._initialized:
-                    await self._async_setup()
+        try:
+            if not self._initialized:
+                await self._async_setup()
 
-                rest_ok = await self._ensure_rest_connection()
+            rest_ok = await self._ensure_rest_connection()
 
-                sensors = self.vacuum.state.sensors
+            sensors = self.vacuum.state.sensors
 
-                data = {
-                    # MQTT data
-                    "battery_level": sensors.battery,
-                    "status_code": sensors.status_code,
-                    "status_text": self._get_status_text(sensors),
-                    "online": self.vacuum.is_connected,
-                    "current_clean_time": sensors.clean_time_min,
-                    "current_clean_area": sensors.clean_area_m2,
-                    "fan_speed": sensors.fan_speed,
-                    "water_level": sensors.water_level,
-                    "clean_mode": sensors.clean_mode,
+            data = {
+                # MQTT data
+                "battery_level": sensors.battery,
+                "status_code": sensors.status_code,
+                "status_text": self._get_status_text(sensors),
+                "online": self.vacuum.is_connected,
+                "current_clean_time": sensors.clean_time_min,
+                "current_clean_area": sensors.clean_area_m2,
+                "fan_speed": sensors.fan_speed,
+                "water_level": sensors.water_level,
+                "clean_mode": sensors.clean_mode,
 
-                    # REST data (will be filled if connection is available)
-                    "software_version": "Unknown",
+                # REST data (will be filled if connection is available)
+                "software_version": "Unknown",
+                "mac_address": self.mac_address,
+                "device_pid": self.vacuum.info.pid if self.vacuum.info else None,
+                "consumables": sensors.consumables,
+                "statistics": {
+                    "total_cleanings": 0,
+                    "total_clean_time": 0,
+                    "total_clean_area": 0,
+                },
+                "last_clean": {},
+                "device_details": {
+                    "device_name": "Neatsvor Vacuum",
                     "mac_address": self.mac_address,
-                    "device_pid": self.vacuum.info.pid if self.vacuum.info else None,
-                    "consumables": sensors.consumables,
-                    "statistics": {
-                        "total_cleanings": 0,
-                        "total_clean_time": 0,
-                        "total_clean_area": 0,
-                    },
-                    "last_clean": {},
-                    "device_details": {
-                        "device_name": "Neatsvor Vacuum",
-                        "mac_address": self.mac_address,
-                        "device_id": self.device_id,
-                        "p_id": self.vacuum.info.pid if self.vacuum.info else None,
-                    }
+                    "device_id": self.device_id,
+                    "p_id": self.vacuum.info.pid if self.vacuum.info else None,
                 }
+            }
 
-                data["malfunction_code"] = sensors.malfunction_code if hasattr(sensors, 'malfunction_code') else 0
+            data["malfunction_code"] = sensors.malfunction_code if hasattr(sensors, 'malfunction_code') else 0
 
-                if rest_ok and self.vacuum and self.vacuum.info:
-                    # Increase retry attempts for DNS-sensitive requests
-                    max_retries = 3
-                    for attempt in range(max_retries):
-                        try:
-                            await self.vacuum.load_consumables()
-                            data["consumables"] = sensors.consumables
-                            _LOGGER.debug("Consumables after load: %s", sensors.consumables)
+            if rest_ok and self.vacuum and self.vacuum.info:
+                # Increase retry attempts for DNS-sensitive requests
+                max_retries = 3
+                for attempt in range(max_retries):
+                    try:
+                        await self.vacuum.load_consumables()
+                        data["consumables"] = sensors.consumables
+                        _LOGGER.debug("Consumables after load: %s", sensors.consumables)
 
-                            devices = await self.vacuum.rest.get_devices()
-                            for device in devices:
-                                if device.get("deviceId") == self.device_id:
-                                    data["software_version"] = device.get("softwareVersion", "Unknown")
-                                    data["device_details"].update({
-                                        "image_url": device.get("imageUrl"),
-                                        "software_version": device.get("softwareVersion", "Unknown"),
-                                        "proto_version": device.get("protoVersion"),
-                                    })
-                                    break
+                        devices = await self.vacuum.rest.get_devices()
+                        for device in devices:
+                            if device.get("deviceId") == self.device_id:
+                                data["software_version"] = device.get("softwareVersion", "Unknown")
+                                data["device_details"].update({
+                                    "image_url": device.get("imageUrl"),
+                                    "software_version": device.get("softwareVersion", "Unknown"),
+                                    "proto_version": device.get("protoVersion"),
+                                })
+                                break
 
-                            total_stats = await self.vacuum.rest.get_clean_sum(self.vacuum.info.device_id)
-                            if total_stats:
-                                data["statistics"] = {
-                                    "total_cleanings": total_stats.get("cleanNums", 0),
-                                    "total_clean_time": round(total_stats.get("cleanLength", 0) / 3600, 1),
-                                    "total_clean_area": round(total_stats.get("cleanArea", 0) / 10, 1),
-                                }
+                        total_stats = await self.vacuum.rest.get_clean_sum(self.vacuum.info.device_id)
+                        if total_stats:
+                            data["statistics"] = {
+                                "total_cleanings": total_stats.get("cleanNums", 0),
+                                "total_clean_time": round(total_stats.get("cleanLength", 0) / 3600, 1),
+                                "total_clean_area": round(total_stats.get("cleanArea", 0) / 10, 1),
+                            }
 
-                            records = await self.vacuum.rest.get_clean_records(self.vacuum.info.device_id, 0, 1)
-                            if records:
-                                record = records[0]
-                                clean_time_str = record.get("cleanTime")
-                                clean_time = None
-                                if clean_time_str:
-                                    try:
-                                        naive_dt = datetime.strptime(clean_time_str, "%Y-%m-%d %H:%M:%S")
-                                        clean_time = dt_util.as_utc(naive_dt)
-                                    except (ValueError, TypeError) as e:
-                                        _LOGGER.warning("Error parsing time: %s", e)
+                        records = await self.vacuum.rest.get_clean_records(self.vacuum.info.device_id, 0, 1)
+                        if records:
+                            record = records[0]
+                            clean_time_str = record.get("cleanTime")
+                            clean_time = None
+                            if clean_time_str:
+                                try:
+                                    naive_dt = datetime.strptime(clean_time_str, "%Y-%m-%d %H:%M:%S")
+                                    clean_time = dt_util.as_utc(naive_dt)
+                                except (ValueError, TypeError) as e:
+                                    _LOGGER.warning("Error parsing time: %s", e)
 
-                                data["last_clean"] = {
-                                    "clean_time": clean_time,
-                                    "clean_duration": record.get("cleanLength", 0) // 60,
-                                    "clean_area": record.get("cleanArea", 0) / 10,
-                                    "finished": record.get("cleanFinishedFlag", False),
-                                }
+                            data["last_clean"] = {
+                                "clean_time": clean_time,
+                                "clean_duration": record.get("cleanLength", 0) // 60,
+                                "clean_area": record.get("cleanArea", 0) / 10,
+                                "finished": record.get("cleanFinishedFlag", False),
+                            }
 
-                            # Break on success
-                            break
+                        # Break on success
+                        break
 
-                        except Exception as e:
-                            error_str = str(e)
-                            if "DNS" in error_str or "Timeout" in error_str or "getaddrinfo" in error_str:
-                                if attempt < max_retries - 1:
-                                    wait_time = 2 ** attempt  # Exponential backoff: 1, 2, 4 seconds
-                                    _LOGGER.warning("DNS/Timeout error, retry %s/%s in %ss: %s", attempt + 1, max_retries, wait_time, error_str)
-                                    await asyncio.sleep(wait_time)
-                                    continue
-                            # If it's not a DNS error or this is the last attempt, log it
-                            if attempt == max_retries - 1:
-                                _LOGGER.warning("Error fetching REST data after %s attempts: %s", max_retries, e)
-                            else:
-                                raise  # Re-raise for retry
+                    except Exception as e:
+                        error_str = str(e)
+                        if "DNS" in error_str or "Timeout" in error_str or "getaddrinfo" in error_str:
+                            if attempt < max_retries - 1:
+                                wait_time = 2 ** attempt  # Exponential backoff: 1, 2, 4 seconds
+                                _LOGGER.warning("DNS/Timeout error, retry %s/%s in %ss: %s", attempt + 1, max_retries, wait_time, error_str)
+                                await asyncio.sleep(wait_time)
+                                continue
+                        # If it's not a DNS error or this is the last attempt, log it
+                        if attempt == max_retries - 1:
+                            _LOGGER.warning("Error fetching REST data after %s attempts: %s", max_retries, e)
+                        else:
+                            raise  # Re-raise for retry
 
-                return data
+            return data
 
-            except Exception as err:
-                _LOGGER.error("Update error: %s", err)
-                # Return last known data if available
-                return self.data or {}
+        except Exception as err:
+            _LOGGER.error("Update error: %s", err)
+            # Return last known data if available
+            return self.data or {}
 
     def _get_status_text(self, sensors) -> str:
         """Get combined status text with error details if needed."""
