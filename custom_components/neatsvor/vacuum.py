@@ -403,12 +403,55 @@ class NeatsvorVacuum(CoordinatorEntity, StateVacuumEntity):
             return {}
 
         data = self.coordinator.data
+        consumables = data.get("consumables", {})
+        stats = data.get("statistics", {})
+        last = data.get("last_clean", {})
 
         attributes = {
+            # Основные свойства
             "water_level": data.get("water_level"),
             "clean_mode": data.get("clean_mode"),
             "status_code": data.get("status_code"),
+            "battery_level": data.get("battery_level"),
+            
+            # Расходники
+            "filter_lifetime": 0,
+            "brush_lifetime": 0,
+            "side_brush_lifetime": 0,
+            
+            # Статистика
+            "total_cleaned_area": 0,
+            "total_cleaned_time": 0,
+            "total_cleanings": 0,
+            
+            # Последняя уборка
+            "last_clean_area": 0,
+            "last_clean_duration": 0,
         }
+        
+        # Заполняем расходники
+        filter_cons = consumables.get("filter")
+        if filter_cons:
+            attributes["filter_lifetime"] = filter_cons.get("remaining_percent", 0)
+        
+        brush_cons = consumables.get("main_brush")
+        if brush_cons:
+            attributes["brush_lifetime"] = brush_cons.get("remaining_percent", 0)
+        
+        side_brush_cons = consumables.get("side_brush")
+        if side_brush_cons:
+            attributes["side_brush_lifetime"] = side_brush_cons.get("remaining_percent", 0)
+        
+        # Заполняем статистику
+        if stats:
+            attributes["total_cleaned_area"] = stats.get("total_clean_area", 0)
+            attributes["total_cleaned_time"] = stats.get("total_clean_time", 0)
+            attributes["total_cleanings"] = stats.get("total_cleanings", 0)
+        
+        # Заполняем последнюю уборку
+        if last:
+            attributes["last_clean_area"] = last.get("clean_area", 0)
+            attributes["last_clean_duration"] = last.get("clean_duration", 0)
 
         if hasattr(self.coordinator.vacuum, 'reference_map'):
             ref_map = self.coordinator.vacuum.reference_map
@@ -417,7 +460,7 @@ class NeatsvorVacuum(CoordinatorEntity, StateVacuumEntity):
                 attributes["reference_map_name"] = ref_map.get('name')
                 attributes["reference_map_date"] = ref_map.get('timestamp')
 
-        consumables = data.get("consumables", {})
+        # Оставляем оригинальные атрибуты расходников для совместимости
         for cons_type, cons_data in consumables.items():
             attributes[f"{cons_type}_remaining"] = cons_data.get("remaining_percent")
             attributes[f"{cons_type}_hours"] = cons_data.get("remaining_hours")
