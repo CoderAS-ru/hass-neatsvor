@@ -1,7 +1,5 @@
 {
-  "component": {
-    "title": "Neatsvor"
-  },
+  "title": "Neatsvor",
   "config": {
     "step": {
       "user": {
