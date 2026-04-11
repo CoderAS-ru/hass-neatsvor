@@ -3,7 +3,6 @@
   "render_readme": true,
   "country": ["RU", "CN", "DE"],
   "homeassistant": "2026.1.0",
-  "iot_class": "Cloud Polling",
   "zip_release": true,
   "filename": "neatsvor.zip"
 }
