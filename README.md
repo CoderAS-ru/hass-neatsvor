@@ -1,4 +1,3 @@
-[![HACS Default](https://img.shields.io/badge/HACS-Default-41bdf5.svg?logo=homeassistantcommunitystore&logoColor=white)](https://github.com/hacs/integration)
 [![GitHub Release](https://img.shields.io/github/v/release/CoderAS-ru/hass-neatsvor)](https://github.com/CoderAS-ru/hass-neatsvor/releases/latest)
 [![GitHub Downloads](https://img.shields.io/github/downloads/CoderAS-ru/hass-neatsvor/total)](https://github.com/CoderAS-ru/hass-neatsvor/releases)
 [![License](https://img.shields.io/github/license/CoderAS-ru/hass-neatsvor)](LICENSE)
