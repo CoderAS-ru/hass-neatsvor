@@ -1,21 +1,9 @@
-[![HACS Default][hacs_shield]][hacs]
-[![GitHub Release][releases_shield]][latest_release]
-[![Downloads][downloads_total_shield]][releases]
-[![GitHub Views][views_shield]][repo]
-[![GitHub Visitors][visitors_shield]][repo]
-
-[hacs_shield]: https://img.shields.io/static/v1.svg?label=HACS&message=Default&style=popout&color=green&labelColor=41bdf5&logo=HomeAssistantCommunityStore&logoColor=white
-[hacs]: https://hacs.xyz/docs/default_repositories
-
-[releases_shield]: https://img.shields.io/github/v/release/CoderAS-ru/hass-neatsvor.svg?style=popout&logo=github&logoColor=white
-[latest_release]: https://github.com/CoderAS-ru/hass-neatsvor/releases/latest
-
-[downloads_total_shield]: https://img.shields.io/github/downloads/CoderAS-ru/hass-neatsvor/total?style=popout&logo=github&logoColor=white
-[releases]: https://github.com/CoderAS-ru/hass-neatsvor/releases
-
-[views_shield]: https://img.shields.io/github/search/CoderAS-ru/hass-neatsvor/views?style=popout&label=Views&color=blue&logo=github&logoColor=white
-[visitors_shield]: https://img.shields.io/github/search/CoderAS-ru/hass-neatsvor/visitors?style=popout&label=Visitors&color=blue&logo=github&logoColor=white
-[repo]: https://github.com/CoderAS-ru/hass-neatsvor
+[![HACS Default](https://img.shields.io/badge/HACS-Default-41bdf5.svg?logo=homeassistantcommunitystore&logoColor=white)](https://github.com/hacs/integration)
+[![GitHub Release](https://img.shields.io/github/v/release/CoderAS-ru/hass-neatsvor)](https://github.com/CoderAS-ru/hass-neatsvor/releases/latest)
+[![GitHub Downloads](https://img.shields.io/github/downloads/CoderAS-ru/hass-neatsvor/total)](https://github.com/CoderAS-ru/hass-neatsvor/releases)
+[![License](https://img.shields.io/github/license/CoderAS-ru/hass-neatsvor)](LICENSE)
+[![GitHub stars](https://img.shields.io/github/stars/CoderAS-ru/hass-neatsvor?style=popout&logo=github&logoColor=white)](https://github.com/CoderAS-ru/hass-neatsvor/stargazers)
+[![GitHub last commit](https://img.shields.io/github/last-commit/CoderAS-ru/hass-neatsvor?style=popout&logo=github&logoColor=white)](https://github.com/CoderAS-ru/hass-neatsvor/commits/main)
 
 # Neatsvor Integration for Home Assistant
 
@@ -66,17 +54,17 @@
 Для использования зональной уборки необходимо установить [lovelace-xiaomi-vacuum-map-card](https://github.com/PiotrMachowski/lovelace-xiaomi-vacuum-map-card):
 
 ```yaml
-type: custom:xiaomi-vacuum-map-card
-entity: vacuum.neatsvor_vacuum
-map_source:
-  camera: camera.neatsvor_live_map
-calibration_source:
-  identity: true  # или используйте калибровку
-zones:
-  service: neatsvor.zone_clean
-  service_data:
-    entity_id: vacuum.neatsvor_vacuum
-    zones: "[[x1, y1, x2, y2, 1]]"
+  type: custom:xiaomi-vacuum-map-card
+  entity: vacuum.neatsvor_vacuum
+  map_source:
+    camera: camera.neatsvor_live_map
+  calibration_source:
+    identity: true  # или используйте калибровку
+  zones:
+    service: neatsvor.zone_clean
+    service_data:
+      entity_id: vacuum.neatsvor_vacuum
+      zones: "[[x1, y1, x2, y2, 1]]"
 ```
 
 ## Сервисы
