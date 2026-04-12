@@ -44,13 +44,29 @@
         "name": "Current Clean Area"
       },
       "fan_speed": {
-        "name": "Fan Speed"
+        "name": "Fan Speed",
+        "state": {
+          "quiet": "Quiet",
+          "normal": "Normal",
+          "strong": "Strong",
+          "max": "Max"
+        }
       },
       "water_level": {
-        "name": "Water Level"
+        "name": "Water Level",
+        "state": {
+          "low": "Low",
+          "middle": "Middle",
+          "high": "High"
+        }
       },
       "clean_mode": {
-        "name": "Clean Mode"
+        "name": "Clean Mode",
+        "state": {
+          "sweep": "Sweep only",
+          "mop": "Mop only",
+          "sweepMop": "Sweep and mop"
+        }
       },
       "filter": {
         "name": "HEPA Filter"
@@ -191,35 +207,17 @@
     },
     "vacuum": {
       "vacuum": {
-        "name": "Smart Vacuum"
+        "name": "Smart Vacuum",
+        "state": {
+          "idle": "Idle",
+          "cleaning": "Cleaning",
+          "returning": "Returning to base",
+          "docked": "Docked",
+          "paused": "Paused",
+          "error": "Error",
+          "charging": "Charging"
+        }
       }
-    }
-  },
-  "state": {
-    "vacuum": {
-      "idle": "Idle",
-      "cleaning": "Cleaning",
-      "returning": "Returning to base",
-      "docked": "Docked",
-      "paused": "Paused",
-      "error": "Error",
-      "charging": "Charging"
-    },
-    "fan_speed": {
-      "quiet": "Quiet",
-      "normal": "Normal",
-      "strong": "Strong",
-      "max": "Max"
-    },
-    "water_level": {
-      "low": "Low",
-      "middle": "Middle",
-      "high": "High"
-    },
-    "clean_mode": {
-      "sweep": "Sweep only",
-      "mop": "Mop only",
-      "sweepMop": "Sweep and mop"
     }
   },
   "services": {
