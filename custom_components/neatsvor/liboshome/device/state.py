@@ -57,7 +57,7 @@ class NeatsvorSensors:
     fan_speed_code: Optional[int] = None  # 0-4
     water_level: Optional[str] = None  # low, middle, high
     water_level_code: Optional[int] = None  # 0-3
-    clean_mode: Optional[str] = None  # sweep, mop, sweepMop
+    clean_mode: Optional[str] = None  # sweep, mop, sweep_mop 
 
     # Storage for all DP values in text form
     dp_text: Dict[int, str] = field(default_factory=dict)

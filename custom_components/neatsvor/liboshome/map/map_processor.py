@@ -22,7 +22,7 @@ class RoomPreset:
     fan_level: int = 2  # 1-4: quiet, normal, strong, max
     water_level: int = 2  # 1-3: low, middle, high
     clean_times: int = 1
-    clean_mode: int = 2  # 0=sweep, 1=mop, 2=sweepMop
+    clean_mode: int = 2  # 0=sweep, 1=mop, 2=sweep_mop 
 
     def to_dict(self) -> Dict:
         return {
