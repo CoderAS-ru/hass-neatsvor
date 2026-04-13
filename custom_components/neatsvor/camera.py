@@ -169,7 +169,6 @@ class NeatsvorCloudMapCamera(CoordinatorEntity, Camera):
         self._attr_device_info = coordinator.device_info
         self._attr_icon = "mdi:cloud-outline"
         self._attr_frame_interval = 0.5
-        # Name will be taken from translations via entity_id
 
         self._current_image = None
         self._current_map_id = None
@@ -179,15 +178,27 @@ class NeatsvorCloudMapCamera(CoordinatorEntity, Camera):
         self._cloud_maps_ready = False
         self._map_path = None
         self._last_update = datetime.now()
+        
+        self._pending_image = None
+        self._pending_map_id = None
 
         _LOGGER.debug("CloudMapCamera initialized")
-
         coordinator.cloud_map_camera = self
 
     async def async_added_to_hass(self) -> None:
         """When entity is added to hass."""
         await super().async_added_to_hass()
         _LOGGER.debug("CloudMapCamera added to hass")
+
+        # Проверяем отложенное изображение
+        if self._pending_image and self._pending_map_id:
+            _LOGGER.info("Applying pending image for map %s", self._pending_map_id)
+            self._current_image = self._pending_image
+            self._current_map_id = self._pending_map_id
+            self._last_update = datetime.now()
+            self.async_write_ha_state()
+            self._pending_image = None
+            self._pending_map_id = None
 
         self.async_on_remove(
             self.coordinator.async_add_listener(self._handle_coordinator_update)
@@ -241,6 +252,10 @@ class NeatsvorCloudMapCamera(CoordinatorEntity, Camera):
         """Update the camera image."""
         _LOGGER.debug("CloudMapCamera.async_update_image() called")
 
+        if self.hass is None:
+            _LOGGER.debug("Camera not yet initialized, skipping")
+            return
+
         if not self._cloud_maps_ready:
             return
 
@@ -276,7 +291,6 @@ class NeatsvorCloudMapCamera(CoordinatorEntity, Camera):
             async with aiofiles.open(path, 'rb') as f:
                 image_bytes = await f.read()
 
-                # If this is the current map, update
                 sensor = self.coordinator.cloud_maps_sensor
                 if sensor and sensor.selected_map_id == map_id:
                     self._current_image = image_bytes
@@ -285,7 +299,6 @@ class NeatsvorCloudMapCamera(CoordinatorEntity, Camera):
                     self._last_update = datetime.now()
                     _LOGGER.info("Loaded image for camera: %s (%s bytes)", path.name, len(self._current_image))
                 else:
-                    # Otherwise store in prefetch
                     self.prefetch_image(map_id, image_bytes)
                     _LOGGER.info("Prefetched image for map %s: %s (%s bytes)", map_id, path.name, len(image_bytes))
 
@@ -306,7 +319,6 @@ class NeatsvorCloudMapCamera(CoordinatorEntity, Camera):
         if not selected_id:
             return None
 
-        # If there's a prefetched image for the current map
         if self._next_map_id == selected_id and self._next_image:
             self._current_image = self._next_image
             self._current_map_id = selected_id
@@ -317,7 +329,6 @@ class NeatsvorCloudMapCamera(CoordinatorEntity, Camera):
             _LOGGER.debug("Used prefetched image for map %s", selected_id)
             return self._current_image
 
-        # If this is the current image
         if self._current_map_id == selected_id and self._current_image:
             return self._current_image
 
@@ -363,6 +374,9 @@ class NeatsvorCleanHistoryCamera(Camera, CoordinatorEntity):
         self._last_image_path = None
         self._last_update = datetime.now()
 
+        self._pending_image = None      
+        self._pending_record_id = None  
+    
         _LOGGER.debug("CleanHistoryCamera initialized")
 
         coordinator.clean_history_camera = self
@@ -371,6 +385,12 @@ class NeatsvorCleanHistoryCamera(Camera, CoordinatorEntity):
         """When entity is added to hass."""
         await super().async_added_to_hass()
         _LOGGER.info("CleanHistoryCamera added to hass with entity_id: %s", self.entity_id)
+        
+        if self._pending_image and self._pending_record_id:
+            _LOGGER.info("Applying pending image for record %s", self._pending_record_id)
+            self.update_image(self._pending_record_id, self._pending_image)
+            self._pending_image = None
+            self._pending_record_id = None
 
     @property
     def entity_picture(self) -> str | None:
@@ -395,6 +415,13 @@ class NeatsvorCleanHistoryCamera(Camera, CoordinatorEntity):
 
     def update_image(self, record_id: int, image_bytes: bytes):
         """Called by sensor when new image is available."""
+        
+        if self.hass is None:
+            _LOGGER.debug("Camera not yet initialized, storing image for later")
+            self._pending_image = image_bytes
+            self._pending_record_id = record_id
+            return
+        
         old_record_id = self._current_record_id
         self._current_record_id = record_id
         self._current_image = image_bytes

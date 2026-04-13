@@ -618,7 +618,11 @@ class NeatsvorMapSensor(CoordinatorEntity, SensorEntity):
 
             _LOGGER.info("Map processed: %s rooms, %s presets", len(self._rooms), len(self._room_presets))
 
-            self.async_write_ha_state()
+            # Проверяем, что сенсор уже инициализирован
+            if self.hass is not None:
+                self.async_write_ha_state()
+            else:
+                _LOGGER.debug("Map sensor not yet initialized, skipping state update")
 
         except Exception as e:
             _LOGGER.error("Error processing map: %s", e, exc_info=True)
@@ -893,9 +897,14 @@ class NeatsvorCloudMapsSensor(CoordinatorEntity, SensorEntity):
                 # Prefetch nearby maps
                 asyncio.create_task(self._prefetch_nearby_maps(i))
 
-                if hasattr(self.coordinator, 'cloud_map_camera'):
+                if hasattr(self.coordinator, 'cloud_map_camera') and self.coordinator.cloud_map_camera:
                     _LOGGER.debug("Updating camera after selection")
-                    self.coordinator.cloud_map_camera.async_write_ha_state()
+                    camera = self.coordinator.cloud_map_camera
+                    # Проверяем, что камера полностью инициализирована
+                    if camera.hass is not None:
+                        camera.async_write_ha_state()
+                    else:
+                        _LOGGER.debug("Camera not yet initialized, skipping async_write_ha_state")
 
                 return True
 
@@ -983,10 +992,14 @@ class NeatsvorCloudMapsSensor(CoordinatorEntity, SensorEntity):
 
         if hasattr(self.coordinator, 'cloud_map_camera') and self.coordinator.cloud_map_camera:
             _LOGGER.debug("Updating camera after map update")
-            if hasattr(self.coordinator.cloud_map_camera, 'async_update_image'):
-                await self.coordinator.cloud_map_camera.async_update_image()
+            camera = self.coordinator.cloud_map_camera
+            if camera.hass is not None:
+                if hasattr(camera, 'async_update_image'):
+                    await camera.async_update_image()
+                else:
+                    camera.async_write_ha_state()
             else:
-                self.coordinator.cloud_map_camera.async_write_ha_state()
+                _LOGGER.debug("Camera not yet initialized, skipping update")
 
     def get_map_by_id(self, map_id: int) -> dict | None:
         """Get map by ID."""
@@ -1702,27 +1715,31 @@ class NeatsvorCleanHistorySensor(CoordinatorEntity, SensorEntity):
                 # Reset camera
                 if hasattr(self.coordinator, 'clean_history_camera') and self.coordinator.clean_history_camera:
                     camera = self.coordinator.clean_history_camera
+                    
+                    # Проверяем, что камера полностью инициализирована
+                    if camera.hass is None:
+                        _LOGGER.debug("Camera not yet initialized, skipping state update")
+                    else:
+                        old_record = camera._current_record_id
 
-                    old_record = camera._current_record_id
+                        # Clear cache
+                        camera._current_image = None
+                        camera._current_record_id = record_id
+                        camera._last_update = datetime.now()
 
-                    # Clear cache
-                    camera._current_image = None
-                    camera._current_record_id = record_id
-                    camera._last_update = datetime.now()
+                        # Force update state
+                        camera.async_write_ha_state()
 
-                    # Force update state
-                    camera.async_write_ha_state()
+                        # Fire event to update all cards
+                        if self.hass:
+                            self.hass.bus.async_fire("neatsvor_camera_reset", {
+                                "entity_id": camera.entity_id,
+                                "record_id": record_id
+                            })
 
-                    # Fire event to update all cards
-                    if self.hass:
-                        self.hass.bus.async_fire("neatsvor_camera_reset", {
-                            "entity_id": camera.entity_id,
-                            "record_id": record_id
-                        })
+                        _LOGGER.debug("Camera reset for record %s (was %s)", record_id, old_record)
 
-                    _LOGGER.debug("Camera reset for record %s (was %s)", record_id, old_record)
-
-                    # Prefetch next and previous records
+                    # Prefetch next and previous records (вынести за проверку, чтобы выполнялось всегда)
                     asyncio.create_task(self._prefetch_nearby_records(i))
 
                 from pathlib import Path
@@ -1872,10 +1889,17 @@ class NeatsvorCleanHistorySensor(CoordinatorEntity, SensorEntity):
                                     png_bytes = await f.read()
 
                                 camera = self.coordinator.clean_history_camera
-                                camera.update_image(record_id, png_bytes)
+                                if camera.hass is not None:
+                                    camera.update_image(record_id, png_bytes)
 
-                                # Additional forced update
-                                camera.async_write_ha_state()
+                                    # Additional forced update
+                                    camera.async_write_ha_state()
+                                else:
+                                    _LOGGER.debug("Camera not yet initialized, storing image for later")
+                                    # Сохраняем изображение для камеры, когда она инициализируется
+                                    if hasattr(camera, '_pending_image'):
+                                        camera._pending_image = png_bytes
+                                        camera._pending_record_id = record_id
 
                                 _LOGGER.info("Camera updated for record %s", record_id)
                         except Exception as e:

@@ -96,28 +96,35 @@ async def _async_setup_selects_later(coordinator, async_add_entities):
     # Clean mode (DP 15)
     mode_dp = dp_manager.get_by_code('clean_mode')
     if mode_dp and mode_dp.enum:
-        options = list(mode_dp.enum.values())
-        # Normalizing the options for clean_mode
-        options = ["sweep_mop" if opt == "sweepMop" else opt for opt in options]
-        # Also normalize value_map
-        value_map = {("sweep_mop" if k == "sweepMop" else k): v for k, v in mode_dp.enum.items()}
+        # Оригинальные опции: ['sweep', 'mop', 'sweepMop']
+        raw_options = list(mode_dp.enum.values())
+        # Опции для отображения: ['sweep', 'mop', 'sweep_mop']
+        display_options = []
+        for opt in raw_options:
+            if opt == "sweepMop":
+                display_options.append("sweep_mop")
+            else:
+                display_options.append(opt)
+        
+        # value_map: нормализованное значение -> DP ID (число)
+        value_map = {}
+        for dp_id, raw_value in mode_dp.enum.items():
+            normalized = "sweep_mop" if raw_value == "sweepMop" else raw_value
+            value_map[normalized] = dp_id
+        
+        _LOGGER.debug("Clean mode - raw: %s, display: %s, map: %s", 
+                      raw_options, display_options, value_map)
         
         new_entities.append(NeatsvorEnumSelect(
             coordinator,
             dp_id=15,
             translation_key="clean_mode",
             icon="mdi:broom",
-            options=options,
+            options=display_options,
             value_map=value_map,
             localize_func=get_localized_clean_mode,
         ))
-        _LOGGER.info("Added clean mode: %s", options)
-
-    # Room selection
-    room_clean_dp = dp_manager.get_by_code('room_clean')
-    if room_clean_dp:
-        new_entities.append(NeatsvorRoomSelect(coordinator))
-        _LOGGER.info("Added room selection")
+        _LOGGER.info("Added clean mode: %s", display_options)
 
     # Cloud map selection
     if hasattr(coordinator.vacuum, 'cloud_maps'):
