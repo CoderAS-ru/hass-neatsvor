@@ -126,7 +126,13 @@ async def _async_setup_selects_later(coordinator, async_add_entities):
         ))
         _LOGGER.info("Added clean mode: %s", display_options)
 
-    # Cloud map selection
+    # Room selection
+    room_clean_dp = dp_manager.get_by_code('room_clean')
+    if room_clean_dp:
+        new_entities.append(NeatsvorRoomSelect(coordinator))
+        _LOGGER.info("Added room selection")
+
+        # Cloud map selection
     if hasattr(coordinator.vacuum, 'cloud_maps'):
         new_entities.append(NeatsvorCloudMapSelect(coordinator))
         _LOGGER.info("Added cloud map selection")
