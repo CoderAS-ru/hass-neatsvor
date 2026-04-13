@@ -69,7 +69,7 @@ async def _async_setup_selects_later(coordinator, async_add_entities):
             new_entities.append(NeatsvorEnumSelect(
                 coordinator,
                 dp_id=10,
-                translation_key="water_level",  # ← добавить
+                translation_key="water_level",
                 icon="mdi:water",
                 options=options,
                 value_map={v: k for k, v in water_dp.enum.items()},
@@ -85,7 +85,7 @@ async def _async_setup_selects_later(coordinator, async_add_entities):
             new_entities.append(NeatsvorEnumSelect(
                 coordinator,
                 dp_id=9,
-                translation_key="fan_speed",  # ← добавить
+                translation_key="fan_speed",
                 icon="mdi:fan",
                 options=options,
                 value_map={v: k for k, v in fan_dp.enum.items()},
@@ -97,13 +97,18 @@ async def _async_setup_selects_later(coordinator, async_add_entities):
     mode_dp = dp_manager.get_by_code('clean_mode')
     if mode_dp and mode_dp.enum:
         options = list(mode_dp.enum.values())
+        # Normalizing the options for clean_mode
+        options = ["sweep_mop" if opt == "sweepMop" else opt for opt in options]
+        # Also normalize value_map
+        value_map = {("sweep_mop" if k == "sweepMop" else k): v for k, v in mode_dp.enum.items()}
+        
         new_entities.append(NeatsvorEnumSelect(
             coordinator,
             dp_id=15,
-            translation_key="clean_mode",  # ← добавить
+            translation_key="clean_mode",
             icon="mdi:broom",
             options=options,
-            value_map={v: k for k, v in mode_dp.enum.items()},
+            value_map=value_map,
             localize_func=get_localized_clean_mode,
         ))
         _LOGGER.info("Added clean mode: %s", options)

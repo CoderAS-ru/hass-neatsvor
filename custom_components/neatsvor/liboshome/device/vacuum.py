@@ -841,7 +841,13 @@ class NeatsvorVacuum:
                     52: "drying_mop", 53: "station_cleaning", 54: "returning_to_wash"
                 }
                 _LOGGER.info("Robot status: %s (DP5=%s)", status_map.get(value, f"Unknown({value})"), value)
-
+                
+            # On DP 15 value="sweepMop" map new value for translation
+            if dp_id == 15:
+                # Нормализуем значение для перевода
+                if value == "sweepMop":
+                    value = "sweep_mop"
+            
             # Update state
             self.state.sensors.update_from_dp(dp_id, value, self.dp_manager)
             self.state.update_dp(dp_id, value)
