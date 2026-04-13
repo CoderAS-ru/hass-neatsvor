@@ -1,10 +1,8 @@
 {
   "name": "Neatsvor",
   "render_readme": true,
-  "domains": ["vacuum", "sensor", "camera", "select"],
   "country": ["RU", "CN", "DE"],
   "homeassistant": "2025.12.0",
-  "iot_class": "Cloud Polling",
   "zip_release": true,
-  "filename": "neatsvor.zip",
+  "filename": "neatsvor.zip"
 }
