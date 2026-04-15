@@ -48,7 +48,7 @@
 
 ## Настройка
 
-**Устройство (робот) должно быть подключено именно к приложению [LibosHome](https://play.google.com/store/apps/details?id=com.blackvision.libos2))!**
+**Устройство (робот) должно быть подключено именно к приложению [LibosHome](https://play.google.com/store/apps/details?id=com.blackvision.libos2)!**
 
 - При необходимости, создайте аккаунт в приложении LibosHome и выполните привязку устройства к этому аккаунту.
 - Важное правило: "один аккаунт - одно подключение".
