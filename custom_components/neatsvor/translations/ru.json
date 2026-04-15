@@ -8,7 +8,12 @@
         "data": {
           "email": "Электронная почта",
           "password": "Пароль",
-          "region": "Регион"
+          "region": "Сервер",
+          "app_type": "Приложение"
+        },
+        "data_description": {
+          "region": "Выберите регион вашего аккаунта",
+          "app_type": "Выберите мобильное приложение, которое вы используете"
         }
       }
     },
@@ -25,7 +30,15 @@
     "step": {
       "init": {
         "title": "Настройки Neatsvor",
-        "description": "**Устройство:** {device_name}\n**MAC:** {device_mac}\n**Email:** {email}\n\nДополнительные настройки пока не реализованы."
+        "description": "**Устройство:** {device_name}\n**MAC:** {device_mac}\n**Email:** {email}",
+        "data": {
+          "region": "Сервер",
+          "app_type": "Приложение"
+        },
+        "data_description": {
+          "region": "Изменить регион сервера",
+          "app_type": "Изменить тип приложения"
+        }
       }
     }
   },

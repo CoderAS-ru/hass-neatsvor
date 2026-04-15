@@ -7,7 +7,12 @@
         "data": {
           "email": "Email",
           "password": "Password",
-          "region": "Region"
+          "region": "Server",
+          "app_type": "Application"
+        },
+        "data_description": {
+          "region": "Select your account region",
+          "app_type": "Select the app you use"
         }
       }
     },
@@ -24,7 +29,15 @@
     "step": {
       "init": {
         "title": "Neatsvor Settings",
-        "description": "**Device:** {device_name}\n**MAC:** {device_mac}\n**Email:** {email}\n\nAdditional settings are not yet implemented."
+        "description": "**Device:** {device_name}\n**MAC:** {device_mac}\n**Email:** {email}",
+        "data": {
+          "region": "Server",
+          "app_type": "Application"
+        },
+        "data_description": {
+          "region": "Change server region",
+          "app_type": "Change application type"
+        }
       }
     }
   }

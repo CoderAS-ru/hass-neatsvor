@@ -51,6 +51,43 @@ COUNTRIES = {
 
 DEFAULT_COUNTRY = "ru"
 
+# Application configurations
+APP_CONFIGS = {
+    "libos": {
+        "name": "LibosHome",
+        "app_key": "d2263964a26eb296c61ee5a6287fc572",
+        "app_secret": "f334e01bf384126ee7af12f7a2b61774",
+        "package_name": "com.blackvision.libos2",
+        "source": "libos",
+    },
+    "joylife": {
+        "name": "JoyLife",
+        "app_key": "6f59c9eea5586cd0fb932be7650a8d13",
+        "app_secret": "4097070631b071ba0d9c1dda1949a6bb",
+        "package_name": "com.blackvision.joylife",
+        "source": "joylife",
+    },
+    "neatsvor": {
+        "name": "Neatsvor Home",
+        "app_key": "89e3794786c13d3989b25eb4f5db7a0a",
+        "app_secret": "f03847c26702f6df1c44274e1331cf1d",
+        "package_name": "com.haibaina.neatsvor",
+        "source": "neatsvor",
+    },
+}
+
+DEFAULT_APP = "libos"
+
+# MQTT configuration
+MQTT_PORT = 8011
+MQTT_USERNAME = "appuser"
+MQTT_PASSWORD = "Blackvisionuser"
+
+# Device defaults
+DEFAULT_TIMEOUT = 30
+DEFAULT_COMMAND_DELAY = 1.0
+DEFAULT_RETRY_COUNT = 3
+
 UPDATE_INTERVAL = 60  # seconds
 
 # Control commands

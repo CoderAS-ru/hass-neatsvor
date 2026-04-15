@@ -11,6 +11,8 @@ from urllib.parse import urljoin
 import aiohttp
 from aiohttp import ClientTimeout, ClientResponseError
 
+from custom_components.neatsvor.const import COUNTRIES, APP_CONFIGS, DEFAULT_APP
+
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -24,7 +26,14 @@ class NeatsvorRestAsync:
     Asynchronous client for Neatsvor REST API.
     """
 
-    def __init__(self, email: str, password: str, region: str = "ru", config: Optional[Dict] = None):
+    def __init__(
+        self, 
+        email: str, 
+        password: str, 
+        region: str = "ru", 
+        app_type: str = DEFAULT_APP, 
+        config: Optional[Dict] = None
+    ):
         """
         Initialize REST client.
 
@@ -32,27 +41,35 @@ class NeatsvorRestAsync:
             email: User email
             password: Password
             region: Region (ru/cn/de)
-            config: Configuration (optional)
+            app_type: Application type (libos/joylife/neatsvor)
+            config: Configuration (optional, overrides region and app_type)
         """
         self.email = email
         self.password = password
         self.region = region
+        self.app_type = app_type
 
-        # Load region configuration
-        from custom_components.neatsvor.const import COUNTRIES
-        country_data = COUNTRIES.get(region, COUNTRIES["ru"])
+        # Use provided config or build from region and app_type
+        if config is not None:
+            self.config = config
+        else:
+            # Load region configuration
+            country_data = COUNTRIES.get(region, COUNTRIES["ru"])
+            
+            # Load app configuration
+            app_config = APP_CONFIGS.get(app_type, APP_CONFIGS[DEFAULT_APP])
 
-        # Default configuration
-        self.config = config or {
-            'base_url': country_data["rest_url"],
-            'app_key': "d2263964a26eb296c61ee5a6287fc572",
-            'app_secret': "f334e01bf384126ee7af12f7a2b61774",
-            'package_name': "com.blackvision.libos2",
-            'source': "libos",
-            'reg_id': "",
-            'country': region,
-            'user_agent': "okhttp/4.9.1"
-        }
+            # Build configuration
+            self.config = {
+                'base_url': country_data["rest_url"],
+                'app_key': app_config["app_key"],
+                'app_secret': app_config["app_secret"],
+                'package_name': app_config["package_name"],
+                'source': app_config["source"],
+                'reg_id': "",
+                'country': region,
+                'user_agent': "okhttp/4.9.1"
+            }
 
         self.session: Optional[aiohttp.ClientSession] = None
         self.user_id: Optional[str] = None
@@ -168,6 +185,7 @@ class NeatsvorRestAsync:
         _LOGGER.debug("=== START LOGIN ===")
         _LOGGER.debug("Email: %s", self.email)
         _LOGGER.debug("Base URL: %s", self.config['base_url'])
+        _LOGGER.debug("App source: %s", self.config['source'])
 
         if not self.session:
             _LOGGER.debug("Creating new session")
@@ -260,6 +278,8 @@ class NeatsvorRestAsync:
             self.config['base_url'],
             "/mis/user/login/sdk"
         )
+
+        _LOGGER.debug("SDK login with app_key: %s", self.config['app_key'][:10] + "...")
 
         # Direct call with appToken header, as in original
         async with self.session.post(

@@ -6,7 +6,20 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall
 
-from .const import DOMAIN, PLATFORMS, COUNTRIES, DEFAULT_COUNTRY
+from .const import (
+    DOMAIN, 
+    PLATFORMS, 
+    COUNTRIES, 
+    DEFAULT_COUNTRY, 
+    APP_CONFIGS, 
+    DEFAULT_APP,
+    MQTT_PORT,
+    MQTT_USERNAME,
+    MQTT_PASSWORD,
+    DEFAULT_TIMEOUT,
+    DEFAULT_COMMAND_DELAY,
+    DEFAULT_RETRY_COUNT
+)
 from .coordinator import NeatsvorCoordinator
 from custom_components.neatsvor.liboshome.config import NeatsvorConfig, RestConfig, MQTTConfig, Credentials, DeviceConfig
 from custom_components.neatsvor.liboshome.device.vacuum import NeatsvorVacuum
@@ -118,16 +131,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})
 
     if _shared_config is None:
-        # Get region from configuration
+        # Get region and app_type from configuration
         region = entry.data.get("region", DEFAULT_COUNTRY)
+        app_type = entry.data.get("app_type", DEFAULT_APP)
+        
         country_data = COUNTRIES[region]
-
+        app_config = APP_CONFIGS.get(app_type, APP_CONFIGS[DEFAULT_APP])
+        
         rest_config = RestConfig(
             base_url=country_data["rest_url"],
-            app_key="d2263964a26eb296c61ee5a6287fc572",
-            app_secret="f334e01bf384126ee7af12f7a2b61774",
-            package_name="com.blackvision.libos2",
-            source="libos",
+            app_key=app_config["app_key"],
+            app_secret=app_config["app_secret"],
+            package_name=app_config["package_name"],
+            source=app_config["source"],
             reg_id="",
             country=region,
             user_agent="okhttp/4.9.1"
@@ -135,9 +151,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         mqtt_config = MQTTConfig(
             host=country_data["mqtt_host"],
-            port=8011,
-            username="appuser",
-            password="Blackvisionuser"
+            port=MQTT_PORT,
+            username=MQTT_USERNAME,
+            password=MQTT_PASSWORD
         )
 
         credentials = Credentials(
@@ -146,9 +162,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
 
         device_config = DeviceConfig(
-            default_timeout=30,
-            command_delay=1.0,
-            retry_count=3
+            default_timeout=DEFAULT_TIMEOUT,
+            command_delay=DEFAULT_COMMAND_DELAY,
+            retry_count=DEFAULT_RETRY_COUNT
         )
 
         _shared_config = NeatsvorConfig(
@@ -159,10 +175,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
 
     if _shared_vacuum is None:
-        _shared_vacuum = NeatsvorVacuum(_shared_config)
+        app_type = entry.data.get("app_type", DEFAULT_APP)
+        _shared_vacuum = NeatsvorVacuum(_shared_config, app_type=app_type)
 
     if not _shared_vacuum.is_initialized:
         await _shared_vacuum.initialize()
+
+    coordinator = NeatsvorCoordinator(hass, _shared_vacuum)
+    _shared_vacuum.set_hass(hass)
 
     coordinator = NeatsvorCoordinator(hass, _shared_vacuum)
     _shared_vacuum.set_hass(hass)

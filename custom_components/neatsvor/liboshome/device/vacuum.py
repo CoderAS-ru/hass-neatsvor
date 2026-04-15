@@ -16,6 +16,7 @@ from pathlib import Path
 import aiohttp
 import aiofiles
 
+from custom_components.neatsvor.const import DEFAULT_APP
 from custom_components.neatsvor.liboshome.dp.manager import DPManager
 from custom_components.neatsvor.liboshome.device.state import DeviceState
 from custom_components.neatsvor.liboshome.mqtt.encoder import NeatsvorEncoder
@@ -68,14 +69,16 @@ class NeatsvorVacuum:
     # Water level mapping
     WATER_LEVEL_MAP = {1: "low", 2: "middle", 3: "high"}
 
-    def __init__(self, config):
+    def __init__(self, config, app_type: str = DEFAULT_APP):
         """
         Initialize vacuum.
 
         Args:
             config: NeatsvorConfig object with configuration
+            app_type: Application type (libos/joylife/neatsvor)
         """
         self.config = config
+        self.app_type = app_type
 
         # Clients (initialized in initialize)
         self.rest = None
@@ -166,7 +169,8 @@ class NeatsvorVacuum:
             self.rest = NeatsvorRestAsync(
                 email=self.config.credentials.email,
                 password=self.config.credentials.password,
-                region=self.config.rest.country
+                region=self.config.rest.country,
+                app_type=self.app_type
             )
 
             _LOGGER.debug("STEP 2 - Entering REST context")
