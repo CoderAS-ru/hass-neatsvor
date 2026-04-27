@@ -101,7 +101,7 @@ zones:
 | Сервис | Описание |
 |--------|----------|
 | `neatsvor.zone_clean` | Зональная уборка |
-| `neatsvor.room_clean` | Уборка комнаты |
+| `neatsvor.clean_room_with_preset` | Уборка комнаты с использованием предварительных настроек |
 | `neatsvor.save_reference_map` | Сохранить текущую карту как эталон |
 | `neatsvor.restore_reference_map` | Восстановить карту из эталона |
 | `neatsvor.save_map_to_cloud` | Сохранить карту в облако |
