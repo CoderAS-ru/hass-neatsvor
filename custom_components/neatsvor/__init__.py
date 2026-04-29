@@ -10,7 +10,9 @@ from .const import (
     DOMAIN, 
     PLATFORMS, 
     COUNTRIES, 
-    DEFAULT_COUNTRY, 
+    DEFAULT_COUNTRY,
+    DEFAULT_PHONE_CODE,
+    CONF_PHONE_CODE,
     APP_CONFIGS, 
     DEFAULT_APP,
     MQTT_PORT,
@@ -21,6 +23,7 @@ from .const import (
     DEFAULT_RETRY_COUNT
 )
 from .coordinator import NeatsvorCoordinator
+from .data_center_manager import get_data_center_manager
 from custom_components.neatsvor.liboshome.config import NeatsvorConfig, RestConfig, MQTTConfig, Credentials, DeviceConfig
 from custom_components.neatsvor.liboshome.device.vacuum import NeatsvorVacuum
 
@@ -29,6 +32,61 @@ _LOGGER = logging.getLogger(__name__)
 _shared_vacuum = None
 _shared_config = None
 _initialized = False
+
+
+async def _migrate_old_config(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Migrate old configuration (with region) to new format (with phone_code)."""
+    # Check if migration is needed
+    if CONF_PHONE_CODE in entry.data:
+        return False  # Already migrated
+    
+    if "region" not in entry.data:
+        return False  # No old data
+    
+    old_region = entry.data.get("region")
+    
+    # Map old region to phone code
+    region_to_phone = {
+        "ru": "7",
+        "cn": "86",
+        "de": "49",
+        "us": "1",
+        "sg": "65",
+    }
+    
+    phone_code = region_to_phone.get(old_region, DEFAULT_PHONE_CODE)
+    
+    # Get data center info
+    manager = get_data_center_manager(hass)
+    data_center = await hass.async_add_executor_job(
+        manager.get_data_center_by_phone_code, phone_code, hass.config.language
+    )
+    
+    # Create new data
+    new_data = dict(entry.data)
+    new_data[CONF_PHONE_CODE] = phone_code
+    
+    if data_center:
+        new_data["rest_url"] = data_center["rest_url"]
+        new_data["mqtt_host"] = data_center["mqtt_host"]
+        new_data["mqtt_port"] = data_center.get("mqtt_port", MQTT_PORT)
+        new_data["country_code"] = data_center.get("country_code", "")
+        new_data["country_name"] = data_center.get("country_name", "")
+    else:
+        # Fallback to old COUNTRIES data
+        country_data = COUNTRIES.get(old_region, COUNTRIES[DEFAULT_COUNTRY])
+        new_data["rest_url"] = country_data["rest_url"]
+        new_data["mqtt_host"] = country_data["mqtt_host"]
+        new_data["mqtt_port"] = MQTT_PORT
+    
+    # Remove old key
+    new_data.pop("region", None)
+    
+    # Update entry
+    hass.config_entries.async_update_entry(entry, data=new_data)
+    _LOGGER.info("Migrated configuration from region '%s' to phone_code '%s'", old_region, phone_code)
+    
+    return True
 
 
 def _get_localized_message(hass, key: str, default: str, **kwargs) -> str:
@@ -57,13 +115,13 @@ def _get_localized_message(hass, key: str, default: str, **kwargs) -> str:
             "map_activation_failed": "Failed to activate map",
             "map_auto_restored": "Map auto-restored from reference",
             "no_reference_map": "No reference map has been set. Please set a reference map first.",
-            "restored_from_reference": "Restored from reference map '{}'\nрџЏ  Rooms: {}\nрџ“Џ Area: {}mВІ",
+            "restored_from_reference": "Restored from reference map '{}'\n🏠 Rooms: {}\n📏 Area: {}m²",
             "comparison_title": "Neatsvor Cloud Maps Comparison",
             "no_reference_set": "No reference map has been set.",
             "please_select_map": "Please select a map to compare.",
-            "comparison_result": "рџ“Љ Comparison: '{}' vs Reference '{}'\n",
-            "differences_found": "\nвљ пёЏ Differences found:\n{}",
-            "maps_identical": "\nвњ… Maps are identical!",
+            "comparison_result": "📊 Comparison: '{}' vs Reference '{}'\n",
+            "differences_found": "\n⚠️ Differences found:\n{}",
+            "maps_identical": "\n✅ Maps are identical!",
             "cleanup_completed": "Cleanup completed. Kept the last {} maps.",
             "history_maps_loaded": "Loaded {} history maps",
             "history_maps_cleaned": "Cleaned up old history maps",
@@ -120,6 +178,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Neatsvor from a config entry."""
     global _shared_vacuum, _shared_config, _initialized
 
+    # Migrate old configuration if needed
+    await _migrate_old_config(hass, entry)
+
     if entry.entry_id in hass.data.get(DOMAIN, {}):
         _LOGGER.warning("Entry %s already initialized, skipping", entry.entry_id)
         return True
@@ -131,27 +192,50 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})
 
     if _shared_config is None:
-        # Get region and app_type from configuration
-        region = entry.data.get("region", DEFAULT_COUNTRY)
+        # Get phone_code and app_type from configuration
+        phone_code = entry.data.get(CONF_PHONE_CODE, DEFAULT_PHONE_CODE)
         app_type = entry.data.get("app_type", DEFAULT_APP)
         
-        country_data = COUNTRIES[region]
+        # Try to get data center from stored values first
+        rest_url = entry.data.get("rest_url")
+        mqtt_host = entry.data.get("mqtt_host")
+        mqtt_port = entry.data.get("mqtt_port", MQTT_PORT)
+        
+        # If not stored, get from data center manager
+        if not rest_url or not mqtt_host:
+            manager = get_data_center_manager(hass)
+            data_center = await hass.async_add_executor_job(
+                manager.get_data_center_by_phone_code, phone_code, hass.config.language
+            )
+            if data_center:
+                rest_url = data_center["rest_url"]
+                mqtt_host = data_center["mqtt_host"]
+                mqtt_port = data_center.get("mqtt_port", MQTT_PORT)
+            else:
+                # Fallback to COUNTRIES using old method (for migration)
+                country_map = {"7": "ru", "86": "cn", "49": "de", "1": "us", "65": "sg"}
+                region = country_map.get(phone_code, DEFAULT_COUNTRY)
+                country_data = COUNTRIES.get(region, COUNTRIES[DEFAULT_COUNTRY])
+                rest_url = country_data["rest_url"]
+                mqtt_host = country_data["mqtt_host"]
+                mqtt_port = MQTT_PORT
+        
         app_config = APP_CONFIGS.get(app_type, APP_CONFIGS[DEFAULT_APP])
         
         rest_config = RestConfig(
-            base_url=country_data["rest_url"],
+            base_url=rest_url,
             app_key=app_config["app_key"],
             app_secret=app_config["app_secret"],
             package_name=app_config["package_name"],
             source=app_config["source"],
             reg_id="",
-            country=region,
+            country=entry.data.get("country_code", "unknown"),
             user_agent="okhttp/4.9.1"
         )
 
         mqtt_config = MQTTConfig(
-            host=country_data["mqtt_host"],
-            port=MQTT_PORT,
+            host=mqtt_host,
+            port=mqtt_port,
             username=MQTT_USERNAME,
             password=MQTT_PASSWORD
         )
@@ -180,9 +264,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     if not _shared_vacuum.is_initialized:
         await _shared_vacuum.initialize()
-
-    coordinator = NeatsvorCoordinator(hass, _shared_vacuum)
-    _shared_vacuum.set_hass(hass)
 
     coordinator = NeatsvorCoordinator(hass, _shared_vacuum)
     _shared_vacuum.set_hass(hass)

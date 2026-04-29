@@ -20,8 +20,19 @@ PLATFORMS = [
 CONF_EMAIL = "email"
 CONF_PASSWORD = "password"
 CONF_DEVICE_ID = "device_id"
+CONF_PHONE_CODE = "phone_code"
 
-# Country/region configuration
+# Телефонные коды для выпадающего списка
+PHONE_CODES = {
+    "7": {"name": "Россия", "flag": "🇷🇺", "country_code": "ru"},
+    "86": {"name": "Китай", "flag": "🇨🇳", "country_code": "cn"},
+    "49": {"name": "Германия", "flag": "🇩🇪", "country_code": "de"},
+    "1": {"name": "США", "flag": "🇺🇸", "country_code": "us"},
+    "65": {"name": "Сингапур", "flag": "🇸🇬", "country_code": "sg"},
+}
+DEFAULT_PHONE_CODE = "7"
+
+# Старый COUNTRIES (оставляем для миграции, но с правильными URL)
 COUNTRIES = {
     "ru": {
         "code": "ru",
@@ -46,7 +57,23 @@ COUNTRIES = {
         "rest_url": "https://de.wisdom.blackvision.net",
         "mqtt_host": "de.mqtt.blackvision.net",
         "region": "de"
-    }
+    },
+    "us": {
+        "code": "us",
+        "name": "USA",
+        "phone_code": "1",
+        "rest_url": "https://us.wisdom.blackvision.net",
+        "mqtt_host": "us.mqtt.blackvision.net",
+        "region": "us"
+    },
+    "sg": {
+        "code": "sg",
+        "name": "Singapore",
+        "phone_code": "65",
+        "rest_url": "https://sg.wisdom.blackvision.net",
+        "mqtt_host": "sg.mqtt.blackvision.net",
+        "region": "sg"
+    },
 }
 
 DEFAULT_COUNTRY = "ru"

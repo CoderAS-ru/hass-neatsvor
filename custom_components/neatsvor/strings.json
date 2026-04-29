@@ -19,6 +19,7 @@
     "error": {
       "invalid_auth": "Invalid email or password",
       "cannot_connect": "Failed to connect to server",
+      "no_data_center": "No data center found for this phone code. Please try another code.",
       "unknown": "Unknown error"
     },
     "abort": {
