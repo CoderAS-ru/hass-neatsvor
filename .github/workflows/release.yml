@@ -20,18 +20,23 @@ jobs:
     
     - name: Create ZIP
       run: |
-        zip -r "neatsvor-${{ steps.get_version.outputs.VERSION }}.zip" \
-          custom_components/ \
-          translations/ \
-          LICENSE \
-          README.md \
-          hacs.json \
-          -x "*.pyc" "*__pycache__*" "*.git*"
+        mkdir -p neatsvor
+        cp -r custom_components neatsvor/
+        cp -r translations neatsvor/ 2>/dev/null || true
+        cp LICENSE README.md hacs.json neatsvor/ 2>/dev/null || true
+        cd neatsvor
+        find . -name "*.pyc" -delete
+        find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
+        zip -r "../neatsvor-${{ steps.get_version.outputs.VERSION }}.zip" .
+        cd ..
+        rm -rf neatsvor
     
-    - name: Upload to Release
-      run: |
-        gh release upload ${{ github.ref_name }} \
-          "neatsvor-${{ steps.get_version.outputs.VERSION }}.zip" \
-          --clobber
+    - name: Upload Release Asset
+      uses: actions/upload-release-asset@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ github.event.release.uploader_url }}
+        asset_path: ./neatsvor-${{ steps.get_version.outputs.VERSION }}.zip
+        asset_name: neatsvor-${{ steps.get_version.outputs.VERSION }}.zip
+        asset_content_type: application/zip
