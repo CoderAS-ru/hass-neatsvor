@@ -2,59 +2,36 @@ name: Build and Release
 
 on:
   release:
-    types: [published]  # changed from 'created' to 'published'
+    types: [published]
 
 permissions:
-  contents: write  # Important! Required for uploading assets
+  contents: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
     
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Get version from release tag
+    - uses: actions/checkout@v4
+    
+    - name: Get version
       id: get_version
       run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-      
-    - name: Create ZIP archive
+    
+    - name: Create ZIP
       run: |
-        # Create temporary directory
-        mkdir temp_dir
-        
-        # Copy only necessary files and directories
-        cp -r custom_components temp_dir/
-        cp -r translations temp_dir/ 2>/dev/null || true
-        cp LICENSE temp_dir/ 2>/dev/null || true
-        cp README.md temp_dir/ 2>/dev/null || true
-        cp hacs.json temp_dir/ 2>/dev/null || true
-        
-        # Remove .pyc files and __pycache__
-        find temp_dir -name "*.pyc" -delete
-        find temp_dir -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
-        
-        # Change to temp directory and create zip
-        cd temp_dir
-        zip -r "../neatsvor-${{ steps.get_version.outputs.VERSION }}.zip" .
-        cd ..
-        
-        # Clean up
-        rm -rf temp_dir
-        
-        # Show zip contents for verification
-        echo "ZIP archive contents:"
-        unzip -l "neatsvor-${{ steps.get_version.outputs.VERSION }}.zip"
-        
-    - name: Upload ZIP to release
-      uses: softprops/action-gh-release@v2  # Updated to v2 (supports Node.js 24)
-      with:
-        files: neatsvor-${{ steps.get_version.outputs.VERSION }}.zip
-        fail_on_unmatched_files: true
+        zip -r "neatsvor-${{ steps.get_version.outputs.VERSION }}.zip" \
+          custom_components/ \
+          translations/ \
+          LICENSE \
+          README.md \
+          hacs.json \
+          -x "*.pyc" "*__pycache__*" "*.git*"
+    
+    - name: Upload to Release
+      run: |
+        gh release upload ${{ github.ref_name }} \
+          "neatsvor-${{ steps.get_version.outputs.VERSION }}.zip" \
+          --clobber
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        
-    - name: Clean up
-      run: |
-        rm -f neatsvor-*.zip
