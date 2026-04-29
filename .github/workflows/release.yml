@@ -1,0 +1,52 @@
+name: Build and Release
+
+on:
+  release:
+    types: [created]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Get version from release tag
+      id: get_version
+      run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+      
+    - name: Create ZIP archive
+      run: |
+        # Create temporary directory
+        mkdir temp_dir
+        
+        # Copy only necessary files and directories
+        cp -r custom_components temp_dir/
+        cp -r translations temp_dir/ 2>/dev/null || true
+        cp LICENSE temp_dir/ 2>/dev/null || true
+        cp README.md temp_dir/ 2>/dev/null || true
+        cp hacs.json temp_dir/ 2>/dev/null || true
+        
+        # Change to temp directory and create zip
+        cd temp_dir
+        zip -r ../neatsvor-${{ steps.get_version.outputs.VERSION }}.zip .
+        cd ..
+        
+        # Clean up
+        rm -rf temp_dir
+        
+        # Show zip contents for verification
+        echo "ZIP archive contents:"
+        unzip -l neatsvor-${{ steps.get_version.outputs.VERSION }}.zip
+        
+    - name: Upload ZIP to release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: neatsvor-${{ steps.get_version.outputs.VERSION }}.zip
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Clean up
+      run: |
+        rm -f neatsvor-*.zip
