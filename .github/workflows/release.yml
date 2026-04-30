@@ -16,7 +16,7 @@ jobs:
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
-          ref: main  # Явно указываем ветку
+          ref: main
 
       - name: Get version
         id: version
@@ -54,8 +54,9 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
-          # Переключаемся на ветку main (если не в ней)
-          git checkout main || git checkout -b main
+          # Принудительно переключаемся на ветку main
+          git fetch origin
+          git checkout -B main origin/main
           
           # Добавляем изменения
           git add custom_components/neatsvor/manifest.json
