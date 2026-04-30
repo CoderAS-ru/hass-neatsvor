@@ -21,28 +21,25 @@ jobs:
         id: version
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
 
-      - name: Update manifest.json (python)
+      - name: Update manifest.json (only version)
         run: |
           python3 << EOF
           import json
-          import datetime
           
           version = "${{ steps.version.outputs.VERSION }}"
-          release_date = datetime.date.today().strftime("%Y-%m-%d")
           
           with open("custom_components/neatsvor/manifest.json", "r") as f:
               manifest = json.load(f)
           
           manifest["version"] = version
-          manifest["release_date"] = release_date
           
           with open("custom_components/neatsvor/manifest.json", "w") as f:
               json.dump(manifest, f, indent=2)
           
-          print(f"Updated manifest.json: version={version}, release_date={release_date}")
+          print(f"Updated manifest.json: version={version}")
           EOF
 
-      - name: Update __version__.py
+      - name: Update __version__.py (with date)
         run: |
           cat > custom_components/neatsvor/__version__.py << EOF
           \"\"\"Version information for Neatsvor integration.\"\"\"
