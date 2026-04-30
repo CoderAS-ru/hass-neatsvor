@@ -16,6 +16,5 @@
     "aiofiles>=22.0.0",
     "aiohttp>=3.8.0"
   ],
-  "version": "1.4.3",
-  "release_date": "2025-04-30"
+  "version": "1.4.3"
 }
