@@ -16,23 +16,30 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Get version
+      - name: Get version from tag
         id: version
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
 
-      - name: Update files for ZIP (no commit)
+      - name: Update version in files (local only)
         run: |
           VERSION="${{ steps.version.outputs.VERSION }}"
           DATE=$(date -u +%Y-%m-%d)
           
+          echo "📝 Updating files to version $VERSION ($DATE)"
+          
           # Обновляем manifest.json
           python3 << EOF
           import json
+          
           with open("custom_components/neatsvor/manifest.json", "r") as f:
               manifest = json.load(f)
+          
           manifest["version"] = "$VERSION"
+          
           with open("custom_components/neatsvor/manifest.json", "w") as f:
               json.dump(manifest, f, indent=2)
+          
+          print("✅ Updated manifest.json")
           EOF
           
           # Обновляем __version__.py
@@ -43,16 +50,25 @@ jobs:
           __release_date__ = "$DATE"
           EOF
           
-          echo "✅ Updated files to version $VERSION (in workspace only)"
+          echo "✅ Updated __version__.py"
+          
+          # Показываем изменения
+          echo "---"
+          cat custom_components/neatsvor/manifest.json
+          echo "---"
+          cat custom_components/neatsvor/__version__.py
 
-      - name: Create ZIP
+      - name: Create ZIP archive
         run: |
           cd custom_components/neatsvor
           zip -r ../neatsvor.zip ./
           cd ../..
           echo "✅ Created neatsvor.zip"
+          
+          # Показываем содержимое ZIP для проверки
+          unzip -l custom_components/neatsvor.zip | head -20
 
-      - name: Upload to release
+      - name: Upload ZIP to release
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
@@ -60,3 +76,6 @@ jobs:
           asset_name: neatsvor.zip
           tag: ${{ github.ref }}
           overwrite: true
+
+      - name: Clean up
+        run: rm -f custom_components/neatsvor.zip
