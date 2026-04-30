@@ -12,19 +12,65 @@ jobs:
   release-zip:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Prepare release ZIP
+      - name: Get version
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Update manifest.json (python)
         run: |
-          cd ${{ github.workspace }}/custom_components/neatsvor
-          zip -r neatsvor.zip ./
+          python3 << EOF
+          import json
+          import datetime
+          
+          version = "${{ steps.version.outputs.VERSION }}"
+          release_date = datetime.date.today().strftime("%Y-%m-%d")
+          
+          with open("custom_components/neatsvor/manifest.json", "r") as f:
+              manifest = json.load(f)
+          
+          manifest["version"] = version
+          manifest["release_date"] = release_date
+          
+          with open("custom_components/neatsvor/manifest.json", "w") as f:
+              json.dump(manifest, f, indent=2)
+          
+          print(f"Updated manifest.json: version={version}, release_date={release_date}")
+          EOF
 
-      - name: Upload ZIP to release
+      - name: Update __version__.py
+        run: |
+          cat > custom_components/neatsvor/__version__.py << EOF
+          \"\"\"Version information for Neatsvor integration.\"\"\"
+          
+          __version__ = "${{ steps.version.outputs.VERSION }}"
+          __release_date__ = "$(date -u +%Y-%m-%d)"
+          EOF
+
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add custom_components/neatsvor/manifest.json
+          git add custom_components/neatsvor/__version__.py
+          git diff --staged --quiet || git commit -m "chore: bump version to ${{ steps.version.outputs.VERSION }}"
+          git push
+
+      - name: Create ZIP
+        run: |
+          cd custom_components/neatsvor
+          zip -r ../neatsvor.zip ./
+          cd ../..
+
+      - name: Upload to release
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: ${{ github.workspace }}/custom_components/neatsvor/neatsvor.zip
+          file: custom_components/neatsvor.zip
           asset_name: neatsvor.zip
           tag: ${{ github.ref }}
           overwrite: true
