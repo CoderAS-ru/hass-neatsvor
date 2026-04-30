@@ -1,0 +1,30 @@
+name: Release
+
+on:
+  release:
+    types:
+      - published
+
+permissions:
+  contents: write
+
+jobs:
+  release-zip:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Prepare release ZIP
+        run: |
+          cd ${{ github.workspace }}/custom_components/neatsvor
+          zip -r neatsvor.zip ./
+
+      - name: Upload ZIP to release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: ${{ github.workspace }}/custom_components/neatsvor/neatsvor.zip
+          asset_name: neatsvor.zip
+          tag: ${{ github.ref }}
+          overwrite: true
