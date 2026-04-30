@@ -16,12 +16,13 @@ jobs:
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
+          ref: main  # Явно указываем ветку
 
       - name: Get version
         id: version
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
 
-      - name: Update manifest.json (only version)
+      - name: Update manifest.json
         run: |
           python3 << EOF
           import json
@@ -39,7 +40,7 @@ jobs:
           print(f"Updated manifest.json: version={version}")
           EOF
 
-      - name: Update __version__.py (with date)
+      - name: Update __version__.py
         run: |
           cat > custom_components/neatsvor/__version__.py << EOF
           \"\"\"Version information for Neatsvor integration.\"\"\"
@@ -48,14 +49,25 @@ jobs:
           __release_date__ = "$(date -u +%Y-%m-%d)"
           EOF
 
-      - name: Commit changes
+      - name: Commit and push changes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Переключаемся на ветку main (если не в ней)
+          git checkout main || git checkout -b main
+          
+          # Добавляем изменения
           git add custom_components/neatsvor/manifest.json
           git add custom_components/neatsvor/__version__.py
-          git diff --staged --quiet || git commit -m "chore: bump version to ${{ steps.version.outputs.VERSION }}"
-          git push
+          
+          # Коммитим, только если есть изменения
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "chore: bump version to ${{ steps.version.outputs.VERSION }}"
+            git push origin main
+          fi
 
       - name: Create ZIP
         run: |
