@@ -282,7 +282,7 @@ class NeatsvorVacuum:
         else:
             _LOGGER.warning("Still cannot request initial data after retry")
 
-            async def _connect_mqtt(self) -> None:
+    async def _connect_mqtt(self) -> None:
         """Internal method for MQTT connection."""
         # MQTT client
         self.mqtt = AsyncMQTTClient(
