@@ -250,17 +250,39 @@ class NeatsvorVacuum:
             _LOGGER.error("Background MQTT error: %s", e)
 
     async def _request_initial_data(self):
-        """Request initial data in background."""
+        """Request initial data in background with retry."""
         try:
             _LOGGER.info("Background data request...")
-            # Small delay to allow MQTT to connect
+            
+            # Ждём готовности MQTT командера
+            for attempt in range(10):
+                if self._command_sender and self._connected:
+                    break
+                _LOGGER.debug("Waiting for MQTT command sender (attempt %s/10)", attempt + 1)
+                await asyncio.sleep(1)
+            else:
+                _LOGGER.warning("MQTT command sender not ready after 10 seconds, will retry later")
+                # Запланировать повторную попытку
+                asyncio.create_task(self._retry_initial_data())
+                return
+            
+            # Небольшая задержка перед запросом
             await asyncio.sleep(2)
             await self.request_all_data()
             _LOGGER.info("Initial data requested")
         except Exception as e:
             _LOGGER.error("Data request error: %s", e)
 
-    async def _connect_mqtt(self) -> None:
+    async def _retry_initial_data(self):
+        """Retry initial data request after delay."""
+        await asyncio.sleep(10)
+        if self._command_sender and self._connected:
+            await self.request_all_data()
+            _LOGGER.info("Initial data requested on retry")
+        else:
+            _LOGGER.warning("Still cannot request initial data after retry")
+
+            async def _connect_mqtt(self) -> None:
         """Internal method for MQTT connection."""
         # MQTT client
         self.mqtt = AsyncMQTTClient(
@@ -716,6 +738,11 @@ class NeatsvorVacuum:
     async def request_data(self, dp_ids: List[int]) -> bool:
         """Request data for specified DPs."""
         try:
+            # Проверяем готовность MQTT
+            if not self._connected or not self._command_sender:
+                _LOGGER.warning("MQTT not connected or command sender not ready, skipping data request")
+                return False
+            
             _LOGGER.info("Requesting data for %s DPs", len(dp_ids))
 
             header = bvsdk.MqttMsgHeader()
