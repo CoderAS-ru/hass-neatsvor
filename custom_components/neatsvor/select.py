@@ -160,6 +160,7 @@ class NeatsvorEnumSelect(CoordinatorEntity, SelectEntity):
         super().__init__(coordinator)
         self._dp_id = dp_id
         self._value_map = value_map
+
         self._storage_key = f"dp_{dp_id}"
         self._initial_value_sent = False
         self._localize_func = localize_func
@@ -231,9 +232,10 @@ class NeatsvorEnumSelect(CoordinatorEntity, SelectEntity):
         return self._localize_func(option, language)
 
     def _get_saved_value(self) -> Optional[str]:
-        """Get saved value from storage (internal key, not localized)."""
-        if hasattr(self.coordinator, 'select_storage'):
-            return self.coordinator.select_storage.get(self._storage_key)
+        """Get saved value from storage."""
+        if hasattr(self.coordinator, 'select_storage') and self.coordinator.select_storage:
+            # Используем синхронный get, так как данные уже загружены
+            return self.coordinator.select_storage.get(f"dp_{self._dp_id}")
         return None
 
     def _get_current_value(self) -> Optional[str]:
@@ -305,7 +307,7 @@ class NeatsvorEnumSelect(CoordinatorEntity, SelectEntity):
             self._initial_value_sent = True
 
             if hasattr(self.coordinator, 'select_storage'):
-                await self.coordinator.select_storage.async_set(self._storage_key, internal_option)
+                await self.coordinator.select_storage.async_set(f"dp_{self._dp_id}", internal_option)
 
             self.async_write_ha_state()
             await self.coordinator.async_request_refresh()

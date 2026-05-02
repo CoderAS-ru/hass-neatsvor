@@ -5,6 +5,7 @@ import asyncio
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall
+from pathlib import Path
 
 from .const import (
     DOMAIN, 
@@ -24,8 +25,8 @@ from .const import (
 )
 from .coordinator import NeatsvorCoordinator
 from .data_center_manager import get_data_center_manager
-from custom_components.neatsvor.liboshome.config import NeatsvorConfig, RestConfig, MQTTConfig, Credentials, DeviceConfig
-from custom_components.neatsvor.liboshome.device.vacuum import NeatsvorVacuum
+from .liboshome.config import NeatsvorConfig, RestConfig, MQTTConfig, Credentials, DeviceConfig
+from .liboshome.device.vacuum import NeatsvorVacuum
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -275,6 +276,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     coordinator.select_storage = NeatsvorSelectStorage(hass, entry.entry_id)
 
+    # Миграция старых данных
+    old_storage_path = hass.config.path(f"custom_components/neatsvor/select_states_{entry.entry_id}.json")
+    await coordinator.select_storage.async_migrate_from_file(Path(old_storage_path))
+
+    # Убедимся, что данные загружены
+    await coordinator.select_storage.async_ensure_loaded()    
+    
     hass.data[DOMAIN][entry.entry_id] = coordinator
 
     _LOGGER.info("Registering platforms: %s", PLATFORMS)
