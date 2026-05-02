@@ -175,7 +175,7 @@ additional_presets:
         icon_mapping:
           Коридор: mdi:wardrobe
           Hallway: mdi:wardrobe
-          Гостинная: mdi:sofa
+          Гостиная: mdi:sofa
           Living room: mdi:sofa
           Детская: mdi:teddy-bear
           Childish: mdi:teddy-bear
