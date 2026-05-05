@@ -1,11 +1,13 @@
+# Neatsvor Integration for Home Assistant
+
+[![EN](https://img.shields.io/badge/English-blue)](README.md)
+[![RU](https://img.shields.io/badge/Русский-red)](README.ru.md)
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz/docs/faq/custom_repositories)
 [![GitHub Release](https://img.shields.io/github/v/release/CoderAS-ru/hass-neatsvor)](https://github.com/CoderAS-ru/hass-neatsvor/releases/latest)
 [![GitHub Downloads](https://img.shields.io/github/downloads/CoderAS-ru/hass-neatsvor/total)](https://github.com/CoderAS-ru/hass-neatsvor/releases)
 [![License](https://img.shields.io/github/license/CoderAS-ru/hass-neatsvor)](LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/CoderAS-ru/hass-neatsvor?style=popout&logo=github&logoColor=white)](https://github.com/CoderAS-ru/hass-neatsvor/stargazers)
 [![GitHub last commit](https://img.shields.io/github/last-commit/CoderAS-ru/hass-neatsvor?style=popout&logo=github&logoColor=white)](https://github.com/CoderAS-ru/hass-neatsvor/commits/main)
-
-# Neatsvor Integration for Home Assistant
 
 Интеграция для управления пылесосами Neatsvor (и другими на платформе [BlackVision](https://www.blackvision.net/), управляемыми посредством приложений [Libos Home](https://play.google.com/store/apps/details?id=com.blackvision.libos2), [Neatsvor Home](https://play.google.com/store/apps/details?id=com.haibaina.neatsvor), [Joy Life](https://play.google.com/store/apps/details?id=com.blackvision.joylife)) в Home Assistant.
 
