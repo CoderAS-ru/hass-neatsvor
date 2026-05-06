@@ -135,7 +135,7 @@ class NeatsvorRestAsync:
     async def _request(self, method: str, path: str, **kwargs) -> Any:
         """
         Execute request WITH iot_token.
-        EXACTLY AS IN ORIGINAL - always uses _headers()
+        With automatic session recovery on errors.
         """
         if not self.session:
             self.session = aiohttp.ClientSession(
@@ -147,7 +147,7 @@ class NeatsvorRestAsync:
         headers = kwargs.pop("headers", None)
 
         if headers is None:
-            headers = self._headers()  # Always take headers with token!
+            headers = self._headers()
 
         _LOGGER.debug("%s %s", method, url)
 
@@ -163,7 +163,24 @@ class NeatsvorRestAsync:
 
         except ClientResponseError as e:
             _LOGGER.error("HTTP error %s: %s", e.status, e.message)
+            
+            # Если сессия закрыта или 401 - пробуем переаутентифицироваться
+            if e.status in (401, 403) or "Session is closed" in str(e):
+                _LOGGER.warning("Session invalid, attempting to re-authenticate")
+                await self.login()
+                await self.login_sdk()
+                # Повторяем запрос один раз
+                return await self._request(method, path, **kwargs)
+            
             raise NeatsvorRestError(f"HTTP {e.status}: {e.message}")
+            
+        except NeatsvorRestError as e:
+            # Специальная обработка для ошибки 50000
+            if "50000" in str(e):
+                _LOGGER.warning("Server error (50000): %s. This is a temporary issue.", e)
+                raise NeatsvorRestError(f"Temporary server error, please retry: {e}")
+            raise
+            
         except Exception as e:
             _LOGGER.error("Request failed: %s", e)
             raise NeatsvorRestError(f"Request failed: {e}")
