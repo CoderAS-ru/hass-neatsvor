@@ -1,6 +1,6 @@
 """Version information."""
 __version__ = "1.6.0"
-__release_date__ = "2026-05-02"
+__release_date__ = "2026-05-06"
 __author__ = "Coder"
 __credits__ = ""
 __status__ = "Production/Stable"
