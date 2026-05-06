@@ -606,7 +606,7 @@ async def _async_register_services(hass: HomeAssistant):
                         else:
                             _LOGGER.error("Failed to load record %s", record.record_id)
 
-                    msg = _get_localized_message(hass, "history_maps_loaded", "Loaded {} history maps", len(records))
+                    msg = _get_localized_message(hass, "history_maps_loaded", "Loaded {} history maps", count=len(records))
                     hass.bus.async_fire("persistent_notification", {
                         "message": msg,
                         "title": "Neatsvor Clean History"

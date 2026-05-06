@@ -1,14 +1,18 @@
 {
   "domain": "neatsvor",
   "name": "Neatsvor",
-  "codeowners": ["@CoderAS-ru"],
+  "codeowners": [
+    "@CoderAS-ru"
+  ],
   "config_flow": true,
   "dependencies": [],
   "documentation": "https://github.com/CoderAS-ru/hass-neatsvor",
   "integration_type": "device",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/CoderAS-ru/hass-neatsvor/issues",
-  "loggers": ["custom_components.neatsvor"],
+  "loggers": [
+    "custom_components.neatsvor"
+  ],
   "requirements": [
     "protobuf>=3.20.0",
     "Pillow>=9.0.0",

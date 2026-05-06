@@ -305,11 +305,12 @@ class NeatsvorUseSelectedMapButton(CoordinatorEntity, ButtonEntity):
             await self.coordinator.cloud_maps_sensor.use_selected_cloud_map()
         else:
             _LOGGER.error("No cloud_maps_sensor in coordinator")
-            
+
+
 class NeatsvorRefreshCleanHistoryButton(CoordinatorEntity, ButtonEntity):
     """Button to force load clean history maps."""
     _attr_has_entity_name = True
-    _attr_unique_id = "s700_refresh_clean_history"  # ← именно такой ID!
+    _attr_unique_id = "neatsvor_refresh_clean_history"
     _attr_translation_key = "refresh_clean_history"
     _attr_icon = "mdi:refresh"
 
