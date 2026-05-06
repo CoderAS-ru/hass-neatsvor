@@ -1,5 +1,5 @@
 """Version information."""
-__version__ = "1.5.0"
+__version__ = "1.6.0"
 __release_date__ = "2026-05-02"
 __author__ = "Coder"
 __credits__ = ""
