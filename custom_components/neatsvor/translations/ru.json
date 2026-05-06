@@ -180,7 +180,10 @@
       },
       "use_selected_map": {
         "name": "Использовать выбранную карту"
-      }
+      },
+	  "refresh_clean_history": {
+		"name": "Обновить историю уборок"
+	  }
     },
     "select": {
       "water_level": {

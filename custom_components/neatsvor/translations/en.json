@@ -180,7 +180,10 @@
       },
       "use_selected_map": {
         "name": "Use Selected Map"
-      }
+      },
+	  "refresh_clean_history": {
+		"name": "Refresh Clean History"
+	  }
     },
     "select": {
       "water_level": {
