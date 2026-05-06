@@ -30,6 +30,7 @@ async def async_setup_entry(
         NeatsvorDeleteCloudMapButton(coordinator),
         NeatsvorSaveCurrentMapButton(coordinator),
         NeatsvorUseSelectedMapButton(coordinator),
+        NeatsvorRefreshCleanHistoryButton(coordinator),
     ]
 
     async_add_entities(entities)
@@ -304,3 +305,44 @@ class NeatsvorUseSelectedMapButton(CoordinatorEntity, ButtonEntity):
             await self.coordinator.cloud_maps_sensor.use_selected_cloud_map()
         else:
             _LOGGER.error("No cloud_maps_sensor in coordinator")
+            
+class NeatsvorRefreshCleanHistoryButton(CoordinatorEntity, ButtonEntity):
+    """Button to force load clean history maps."""
+    _attr_has_entity_name = True
+    _attr_unique_id = "s700_refresh_clean_history"  # ← именно такой ID!
+    _attr_translation_key = "refresh_clean_history"
+    _attr_icon = "mdi:refresh"
+
+    def __init__(self, coordinator):
+        super().__init__(coordinator)
+        self._attr_device_info = coordinator.device_info
+
+    async def async_press(self) -> None:
+        """Handle the button press."""
+        _LOGGER.info("Force loading clean history...")
+        
+        try:
+            # Используем существующий сервис
+            await self.hass.services.async_call(
+                "neatsvor",
+                "force_load_history",
+                {},
+                blocking=False
+            )
+            
+            # Уведомление пользователя
+            self.hass.bus.async_fire("persistent_notification", {
+                "message": "Loading clean history maps... This may take a few minutes.",
+                "title": "Neatsvor Clean History"
+            })
+            
+            # Обновляем select, чтобы он показал новые записи
+            if hasattr(self.coordinator, 'clean_history_select'):
+                await self.coordinator.clean_history_select.async_update()
+                
+        except Exception as e:
+            _LOGGER.error("Error loading history: %s", e)
+            self.hass.bus.async_fire("persistent_notification", {
+                "message": f"Error loading history: {e}",
+                "title": "Neatsvor Error"
+            })
