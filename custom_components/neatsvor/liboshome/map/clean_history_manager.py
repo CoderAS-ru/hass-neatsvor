@@ -54,29 +54,58 @@ class CleanHistoryManager:
         """Set visualizer for saving PNG."""
         self._visualizer = visualizer
 
-    async def get_clean_history(self, device_id: int, limit: int = 20) -> List[CleanRecordInfo]:
-        """Get cleaning history (asynchronous)."""
-        raw_records = await self.rest.get_clean_records(device_id, 0, limit)
-
-        records = []
-        for item in raw_records:
+    async def get_clean_history(self, device_id: int, limit: int = 20, retry_count: int = 3) -> List[CleanRecordInfo]:
+        """Get cleaning history with retry on server errors."""
+        last_error = None
+        
+        for attempt in range(retry_count):
             try:
-                record = CleanRecordInfo(
-                    record_id=item.get('recordId', 0),
-                    clean_time=item.get('cleanTime', 'N/A'),
-                    clean_area_raw=item.get('cleanArea', 0),
-                    clean_length=item.get('cleanLength', 0),
-                    record_url=item.get('recordUrl', ''),
-                    finished=item.get('cleanFinishedFlag', False)
-                )
+                raw_records = await self.rest.get_clean_records(device_id, 0, limit)
+                
+                records = []
+                for item in raw_records:
+                    try:
+                        record = CleanRecordInfo(
+                            record_id=item.get('recordId', 0),
+                            clean_time=item.get('cleanTime', 'N/A'),
+                            clean_area_raw=item.get('cleanArea', 0),
+                            clean_length=item.get('cleanLength', 0),
+                            record_url=item.get('recordUrl', ''),
+                            finished=item.get('cleanFinishedFlag', False)
+                        )
 
-                if record.record_id > 0:
-                    records.append(record)
+                        if record.record_id > 0:
+                            records.append(record)
 
+                    except Exception as e:
+                        _LOGGER.error("Error parsing cleaning record: %s", e)
+                        continue
+                
+                _LOGGER.info("Loaded %s history records", len(records))
+                return records
+                
+            except NeatsvorRestError as e:
+                last_error = e
+                error_str = str(e)
+                if "50000" in error_str or "System error" in error_str or "temporary" in error_str.lower():
+                    _LOGGER.warning("Server error (attempt %s/%s): %s", attempt + 1, retry_count, e)
+                    if attempt < retry_count - 1:
+                        await asyncio.sleep(2 ** attempt)  # Exponential backoff: 1, 2, 4 sec
+                        continue
+                else:
+                    _LOGGER.error("Non-retryable error loading history: %s", e)
+                    raise
+                    
             except Exception as e:
-                _LOGGER.error("Error parsing cleaning record: %s", e)
-
-        return records
+                last_error = e
+                _LOGGER.error("Unexpected error loading history: %s", e)
+                if attempt < retry_count - 1:
+                    await asyncio.sleep(1)
+                    continue
+                raise
+        
+        _LOGGER.error("Failed to load history after %s attempts: %s", retry_count, last_error)
+        return []  # Return empty list on persistent failure
 
     async def load_clean_record_map(self, record: CleanRecordInfo) -> Optional[Dict]:
         """Load and decode cleaning record map (asynchronous)."""
