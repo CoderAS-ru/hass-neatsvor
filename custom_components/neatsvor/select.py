@@ -676,75 +676,75 @@ class NeatsvorCleanHistorySelect(CoordinatorEntity, SelectEntity):
         """Handle updated data from the coordinator."""
         self.hass.async_create_task(self.async_update())
 
-async def async_update(self):
-    """Update options from sensor."""
-    if not self.hass:
-        return
+    async def async_update(self):
+        """Update options from sensor."""
+        if not self.hass:
+            return
 
-    if not hasattr(self.coordinator, 'clean_history_sensor') or not self.coordinator.clean_history_sensor:
-        self._attr_options = ["⏳ Waiting for sensor..."]
-        self._attr_current_option = None
+        if not hasattr(self.coordinator, 'clean_history_sensor') or not self.coordinator.clean_history_sensor:
+            self._attr_options = ["⏳ Waiting for sensor..."]
+            self._attr_current_option = None
+            self.async_write_ha_state()
+            return
+
+        sensor = self.coordinator.clean_history_sensor
+
+        if not hasattr(sensor, '_records'):
+            self._attr_options = ["⏳ Initializing..."]
+            self._attr_current_option = None
+            self.async_write_ha_state()
+            return
+
+        if not sensor._records:
+            self._attr_options = ["📭 No history records"]
+            self._attr_current_option = None
+            self.async_write_ha_state()
+            return
+
+        _LOGGER.info("Building select options from %s records", len(sensor._records))
+
+        options = []
+        self._record_options = {}
+        self._record_map = {}
+
+        for record in sensor._records:
+            time_str = record['clean_time'][:16] if len(record['clean_time']) > 16 else record['clean_time']
+            check = "✓" if record['finished'] else "⚠"
+            option = f"[{time_str}] {record['clean_area']}m² ({record['clean_duration']}min) {check}"
+            options.append(option)
+            self._record_options[option] = record['record_id']
+            self._record_map[record['record_id']] = option
+
+        self._attr_options = options
+
+        if options:
+            # Restore saved selection if available
+            if self._saved_record_id and self._saved_record_id in self._record_map:
+                saved_option = self._record_map[self._saved_record_id]
+                self._attr_current_option = saved_option
+                _LOGGER.info("Restored saved record: %s", saved_option)
+
+                if sensor.selected_record_id != self._saved_record_id:
+                    sensor.selected_record_id = self._saved_record_id
+                    sensor.async_write_ha_state()
+            else:
+                # Автоматически выбираем первую запись, если нет сохранённой
+                first_option = options[0]
+                first_record_id = self._record_options[first_option]
+                self._attr_current_option = first_option
+                self._saved_record_id = first_record_id
+                _LOGGER.info("Auto-selected first record: %s", first_option)
+
+                # Сохраняем выбор
+                if hasattr(self.coordinator, 'select_storage'):
+                    await self.coordinator.select_storage.async_set('last_clean_history', str(first_record_id))
+
+                # Уведомляем сенсор о выборе (без загрузки карты)
+                if sensor.selected_record_id != first_record_id:
+                    sensor.selected_record_id = first_record_id
+                    sensor.async_write_ha_state()
+
         self.async_write_ha_state()
-        return
-
-    sensor = self.coordinator.clean_history_sensor
-
-    if not hasattr(sensor, '_records'):
-        self._attr_options = ["⏳ Initializing..."]
-        self._attr_current_option = None
-        self.async_write_ha_state()
-        return
-
-    if not sensor._records:
-        self._attr_options = ["📭 No history records"]
-        self._attr_current_option = None
-        self.async_write_ha_state()
-        return
-
-    _LOGGER.info("Building select options from %s records", len(sensor._records))
-
-    options = []
-    self._record_options = {}
-    self._record_map = {}
-
-    for record in sensor._records:
-        time_str = record['clean_time'][:16] if len(record['clean_time']) > 16 else record['clean_time']
-        check = "✓" if record['finished'] else "⚠"
-        option = f"[{time_str}] {record['clean_area']}m² ({record['clean_duration']}min) {check}"
-        options.append(option)
-        self._record_options[option] = record['record_id']
-        self._record_map[record['record_id']] = option
-
-    self._attr_options = options
-
-    if options:
-        # Restore saved selection if available
-        if self._saved_record_id and self._saved_record_id in self._record_map:
-            saved_option = self._record_map[self._saved_record_id]
-            self._attr_current_option = saved_option
-            _LOGGER.info("Restored saved record: %s", saved_option)
-
-            if sensor.selected_record_id != self._saved_record_id:
-                sensor.selected_record_id = self._saved_record_id
-                sensor.async_write_ha_state()
-        else:
-            # Автоматически выбираем первую запись, если нет сохранённой
-            first_option = options[0]
-            first_record_id = self._record_options[first_option]
-            self._attr_current_option = first_option
-            self._saved_record_id = first_record_id
-            _LOGGER.info("Auto-selected first record: %s", first_option)
-
-            # Сохраняем выбор
-            if hasattr(self.coordinator, 'select_storage'):
-                await self.coordinator.select_storage.async_set('last_clean_history', str(first_record_id))
-
-            # Уведомляем сенсор о выборе (без загрузки карты)
-            if sensor.selected_record_id != first_record_id:
-                sensor.selected_record_id = first_record_id
-                sensor.async_write_ha_state()
-
-    self.async_write_ha_state()
 
     async def async_select_option(self, option: str) -> None:
         """Select record - user selected a record."""
