@@ -386,11 +386,21 @@ class NeatsvorCleanHistoryCamera(Camera, CoordinatorEntity):
         await super().async_added_to_hass()
         _LOGGER.info("CleanHistoryCamera added to hass with entity_id: %s", self.entity_id)
         
+        # Проверяем, есть ли отложенное изображение
         if self._pending_image and self._pending_record_id:
             _LOGGER.info("Applying pending image for record %s", self._pending_record_id)
             self.update_image(self._pending_record_id, self._pending_image)
             self._pending_image = None
             self._pending_record_id = None
+        
+        # Если нет текущего изображения, но есть выбранная запись в сенсоре
+        if not self._current_image and hasattr(self.coordinator, 'clean_history_sensor'):
+            sensor = self.coordinator.clean_history_sensor
+            if sensor and sensor.selected_record_id:
+                _LOGGER.info("Camera has no image but sensor has selected record %s, requesting load", 
+                            sensor.selected_record_id)
+                # Запрашиваем загрузку карты через сенсор
+                await sensor.select_record(sensor.selected_record_id)
 
     @property
     def entity_picture(self) -> str | None:

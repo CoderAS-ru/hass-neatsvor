@@ -1639,12 +1639,26 @@ class NeatsvorCleanHistorySensor(CoordinatorEntity, SensorEntity):
                     })
 
                 self._attr_native_value = str(len(self._records))
-                _LOGGER.info("Loaded %s history records (%s cached)", len(self._records), sum(1 for r in self._records if r['downloaded']))
+                _LOGGER.info("Loaded %s history records (%s cached)", 
+                            len(self._records), 
+                            sum(1 for r in self._records if r['downloaded']))
 
-                # Auto-load the latest map on first load
-                if not self._initial_load_done and self._records:
-                    await self._auto_load_latest_map()
-                    self._initial_load_done = True
+                # Автоматически выбираем последнюю запись (первую в списке, так как API возвращает от новых к старым)
+                if self._records and not self.selected_record_id:
+                    latest_record = self._records[0]
+                    latest_id = latest_record['record_id']
+                    _LOGGER.info("Auto-selecting latest history record: %s", latest_id)
+                    
+                    # Если карта уже скачана - просто выбираем
+                    if latest_record.get('downloaded') and latest_record.get('png_path'):
+                        await self.select_record(latest_id)
+                    else:
+                        # Иначе скачиваем с авто-выбором
+                        if latest_id not in self._download_tasks or self._download_tasks[latest_id].done():
+                            _LOGGER.info("Auto-downloading latest map for record %s", latest_id)
+                            self._download_tasks[latest_id] = asyncio.create_task(
+                                self._download_record_map(latest_id, auto_select=True)
+                            )
 
                 # Clean up old maps (keep last 50)
                 await self._cleanup_old_maps()
@@ -2198,6 +2212,25 @@ class NeatsvorCleanHistorySensor(CoordinatorEntity, SensorEntity):
             'downloading': list(self._download_tasks.keys()) if self._download_tasks else []
         }
 
+    @property
+    def entity_picture(self) -> Optional[str]:
+        """Return URL of the latest history map for preview."""
+        if self._records and self.selected_record_id:
+            for record in self._records:
+                if record['record_id'] == self.selected_record_id and record.get('png_path'):
+                    png_path = Path(record['png_path'])
+                    if png_path.exists() and '/config/www/' in str(png_path):
+                        return f"/local/{str(png_path.relative_to('/config/www'))}"
+        
+        # Если нет выбранной записи, но есть последняя скачанная карта
+        if self._records:
+            for record in self._records:
+                if record.get('png_path'):
+                    png_path = Path(record['png_path'])
+                    if png_path.exists() and '/config/www/' in str(png_path):
+                        return f"/local/{str(png_path.relative_to('/config/www'))}"
+        
+        return None
 
 class NeatsvorMalfunctionSensor(CoordinatorEntity, SensorEntity):
     """Sensor for robot malfunctions - shows error details separately."""
