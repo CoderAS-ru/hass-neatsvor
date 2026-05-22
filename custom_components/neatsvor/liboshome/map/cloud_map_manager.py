@@ -2,16 +2,16 @@
 
 import logging
 import json
-import os
 import aiofiles
 import asyncio
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, List, Optional
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 
 from custom_components.neatsvor.liboshome.map.map_decoder import MapDecoder
 from custom_components.neatsvor.liboshome.map.map_renderer import MapRenderer
+from .map_cache import get_map_cache
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -43,7 +43,7 @@ class CloudMapInfo:
 
 
 class CloudMapManager:
-    """Manager for cloud maps with local caching."""
+    """Manager for cloud maps with lazy loading and on-demand PNG generation."""
 
     def __init__(self, rest_client):
         """Initialize with REST client."""
@@ -59,38 +59,28 @@ class CloudMapManager:
 
         self.renderer = MapRenderer()
         self._maps_cache: List[CloudMapInfo] = []
+        self._processing_tasks: Dict[int, asyncio.Task] = {}
 
-    async def get_map_list(self, device_id: int, limit: int = 20) -> List[CloudMapInfo]:
-        """Get list of cloud maps from API and merge with local cache."""
+    async def get_map_list(self, device_id: int, limit: int = 10) -> List[CloudMapInfo]:
+        """Get list of cloud maps from API (lazy loading - no metadata processing)."""
         try:
-            # Use get_map_list method from async_client.py
             maps_data = await self.rest.get_map_list(device_id, 0, limit)
             _LOGGER.info("Got %s maps from API for device %s", len(maps_data), device_id)
 
             cloud_maps = []
             for map_data in maps_data:
-                # Extract date from map name (format: "S700-2026-01-09")
-                clean_date = None
-                map_name = map_data.get('name', '')
-
-                # Try to extract date from name
-                import re
-                date_match = re.search(r'(\d{4}-\d{2}-\d{2})', map_name)
-                if date_match:
-                    try:
-                        clean_date = datetime.fromisoformat(date_match.group(1))
-                    except:
-                        pass
-
+                # Extract date from map name
+                clean_date = self._extract_date(map_data.get('name', ''))
+                
                 # Convert estimatedArea from cm² to m²
                 estimated_area_cm2 = int(map_data.get('estimated_area_cm2', 0))
                 area_m2 = estimated_area_cm2 / 10000
 
-                # Create map info
+                # Create map info with minimal data (no metadata loading)
                 map_info = CloudMapInfo(
                     device_map_id=map_data['device_map_id'],
                     map_id=map_data['map_id'],
-                    name=map_name,
+                    name=map_data.get('name', ''),
                     area_m2=area_m2,
                     clean_date=clean_date,
                     app_map_url=map_data.get('app_map_url', ''),
@@ -98,18 +88,20 @@ class CloudMapManager:
                     dev_map_url=map_data.get('dev_map_url', ''),
                     dev_map_md5=map_data.get('dev_map_md5', ''),
                 )
-
-                # Check local cache and create metadata if needed
-                await self._load_or_create_metadata(map_info)
-
+                
+                # Check if PNG already exists (fast check)
+                png_path = self._get_png_path(map_info)
+                if png_path.exists():
+                    map_info.png_path = str(png_path)
+                    map_info.png_url = f"/local/neatsvor/maps/cloud/png/{png_path.name}"
+                    
+                    # Try to load cached metadata
+                    await self._load_cached_metadata(map_info)
+                
                 cloud_maps.append(map_info)
 
             self._maps_cache = cloud_maps
-            _LOGGER.info("Processed %s maps", len(cloud_maps))
-
-            # Log statistics by rooms
-            maps_with_rooms = sum(1 for m in cloud_maps if m.room_count > 0)
-            _LOGGER.info("Maps with rooms: %s/%s", maps_with_rooms, len(cloud_maps))
+            _LOGGER.info("Created %s map entries (metadata lazy-loaded)", len(cloud_maps))
 
             return cloud_maps
 
@@ -117,80 +109,125 @@ class CloudMapManager:
             _LOGGER.error("Error getting cloud maps: %s", e, exc_info=True)
             return []
 
-    async def _load_or_create_metadata(self, map_info: CloudMapInfo):
-        """Load metadata from local cache or create if BV exists but JSON doesn't."""
-        bv_path = self._get_bv_path(map_info)
+    def _extract_date(self, name: str) -> Optional[datetime]:
+        """Extract date from map name."""
+        import re
+        date_match = re.search(r'(\d{4}-\d{2}-\d{2})', name)
+        if date_match:
+            try:
+                return datetime.fromisoformat(date_match.group(1))
+            except:
+                pass
+        return None
+
+    async def _load_cached_metadata(self, map_info: CloudMapInfo):
+        """Load metadata from cache or JSON file if exists."""
+        cache = get_map_cache()
+        cache_key = f"cloud_meta_{map_info.device_map_id}"
+        
+        # Check memory cache first
+        cached_meta = cache.get_metadata(cache_key)
+        if cached_meta:
+            map_info.room_count = cached_meta.get('room_count', 0)
+            map_info.rooms = cached_meta.get('rooms', [])
+            map_info.width = cached_meta.get('width', 0)
+            map_info.height = cached_meta.get('height', 0)
+            return
+        
+        # Try to load from JSON file
         json_path = self._get_json_path(map_info)
+        if json_path.exists():
+            try:
+                async with aiofiles.open(json_path, 'r', encoding='utf-8') as f:
+                    content = await f.read()
+                    metadata = json.loads(content)
+                    map_info.room_count = metadata.get('room_count', 0)
+                    map_info.rooms = metadata.get('rooms', [])
+                    map_info.width = metadata.get('width', 0)
+                    map_info.height = metadata.get('height', 0)
+                    map_info.resolution = metadata.get('resolution', 0.05)
+                    
+                    # Save to memory cache
+                    cache.set_metadata(cache_key, {
+                        'room_count': map_info.room_count,
+                        'rooms': map_info.rooms,
+                        'width': map_info.width,
+                        'height': map_info.height,
+                    })
+                    _LOGGER.debug("Loaded metadata from JSON for map %s", map_info.device_map_id)
+            except Exception as e:
+                _LOGGER.debug("Could not load metadata JSON: %s", e)
+
+    async def ensure_png_exists(self, map_info: CloudMapInfo) -> Optional[str]:
+        """
+        Ensure PNG exists for selected map.
+        Returns PNG path immediately if exists, or generates in background.
+        """
         png_path = self._get_png_path(map_info)
-
-        # Check if BV file exists
-        if bv_path.exists():
-            map_info.downloaded_path = str(bv_path)
-
-            # If JSON exists - load from it
-            if json_path.exists():
-                try:
-                    async with aiofiles.open(json_path, 'r', encoding='utf-8') as f:
-                        content = await f.read()
-                        metadata = json.loads(content)
-                        map_info.room_count = metadata.get('room_count', 0)
-                        map_info.rooms = metadata.get('rooms', [])
-                        map_info.width = metadata.get('width', 0)
-                        map_info.height = metadata.get('height', 0)
-                        map_info.resolution = metadata.get('resolution', 0.05)
-                        _LOGGER.debug("Loaded metadata from %s with %s rooms", json_path.name, map_info.room_count)
-                except Exception as e:
-                    _LOGGER.debug("Could not load metadata: %s", e)
-
-            # If JSON doesn't exist - create it from BV file
-            else:
-                _LOGGER.info("JSON metadata missing for %s, creating from BV...", map_info.device_map_id)
-                try:
-                    # Decode BV file
-                    map_data = await self._decode_bv_file(bv_path)
-                    if map_data:
-                        # Extract rooms
-                        rooms_info = self._extract_rooms_info(map_data)
-                        room_count = len(rooms_info)
-
-                        # Save metadata
-                        await self._save_metadata(map_info, map_data, rooms_info, room_count)
-
-                        # Update map_info
-                        map_info.room_count = room_count
-                        map_info.rooms = rooms_info
-                        map_info.width = map_data.get('width', 0)
-                        map_info.height = map_data.get('height', 0)
-
-                        _LOGGER.info("Created JSON with %s rooms for map %s", room_count, map_info.device_map_id)
-                except Exception as e:
-                    _LOGGER.error("Failed to create metadata: %s", e)
-
-        # Check PNG
+        
+        # If PNG already exists - return path immediately
         if png_path.exists():
-            map_info.png_path = str(png_path)
-            map_info.png_url = f"/local/neatsvor/maps/cloud/png/{png_path.name}"
-            _LOGGER.debug("PNG exists: %s", png_path.name)
-        else:
-            # If PNG doesn't exist but BV does - generate it
-            if bv_path.exists() and not png_path.exists():
-                _LOGGER.info("PNG missing for %s, generating...", map_info.device_map_id)
-                try:
-                    # Use already loaded data or decode again
-                    if hasattr(map_info, 'rooms') and map_info.rooms:
-                        # Already have rooms, use them
-                        map_data = await self._decode_bv_file(bv_path)
-                        if map_data:
-                            png_path = await self._render_png(map_data, map_info)
-                            if png_path:
-                                map_info.png_path = str(png_path)
-                                map_info.png_url = f"/local/neatsvor/maps/cloud/png/{png_path.name}"
-                                _LOGGER.info("Generated PNG: %s", map_info.png_url)
-                except Exception as e:
-                    _LOGGER.error("Failed to generate PNG: %s", e)
+            # Load metadata if not yet loaded
+            if not map_info.rooms:
+                await self._load_cached_metadata(map_info)
+            return str(png_path)
+        
+        # If PNG is already being processed - wait for it
+        if map_info.device_map_id in self._processing_tasks:
+            task = self._processing_tasks[map_info.device_map_id]
+            if not task.done():
+                _LOGGER.debug("PNG already being generated for map %s, waiting...", map_info.device_map_id)
+                await task
+                return str(png_path) if png_path.exists() else None
+        
+        # Start background generation
+        _LOGGER.info("Starting PNG generation for map %s", map_info.device_map_id)
+        task = asyncio.create_task(self._generate_png_background(map_info))
+        self._processing_tasks[map_info.device_map_id] = task
+        
+        # Return None immediately - camera will show loading state
+        return None
+
+    async def _generate_png_background(self, map_info: CloudMapInfo):
+        """Generate PNG in background."""
+        try:
+            bv_path = self._get_bv_path(map_info)
+            
+            # Check if BV exists
+            if not bv_path.exists():
+                _LOGGER.info("BV not found, downloading map %s", map_info.device_map_id)
+                result = await self.download_map(map_info)
+                if result and result.get('png_path'):
+                    _LOGGER.info("PNG generated for map %s", map_info.device_map_id)
+                return
+            
+            # BV exists, generate PNG
+            _LOGGER.info("Generating PNG from existing BV for map %s", map_info.device_map_id)
+            map_data = await self._decode_bv_file(bv_path)
+            if map_data:
+                await self._render_png(map_data, map_info)
+                
+                # Extract and save metadata
+                rooms_info = self._extract_rooms_info(map_data)
+                room_count = len(rooms_info)
+                await self._save_metadata(map_info, map_data, rooms_info, room_count)
+                
+                # Update map_info
+                map_info.room_count = room_count
+                map_info.rooms = rooms_info
+                map_info.width = map_data.get('width', 0)
+                map_info.height = map_data.get('height', 0)
+                
+                _LOGGER.info("PNG and metadata generated for map %s", map_info.device_map_id)
+                
+        except Exception as e:
+            _LOGGER.error("Error generating PNG for map %s: %s", map_info.device_map_id, e)
+        finally:
+            # Cleanup processing task
+            self._processing_tasks.pop(map_info.device_map_id, None)
 
     async def download_map(self, map_info: CloudMapInfo) -> Optional[Dict[str, Any]]:
-        """Download and process a cloud map."""
+        """Download and process a cloud map (full download)."""
         _LOGGER.info("Downloading map %s: %s", map_info.device_map_id, map_info.name)
 
         try:
@@ -217,10 +254,10 @@ class CloudMapManager:
             room_count = len(rooms_info)
             _LOGGER.info("Found %s rooms in map", room_count)
 
-            # Save metadata to JSON (with rooms)
+            # Save metadata to JSON
             json_path = await self._save_metadata(map_info, map_data, rooms_info, room_count)
 
-            # Render PNG directly to public directory
+            # Render PNG
             png_path = await self._render_png(map_data, map_info)
 
             # Update map info
@@ -254,47 +291,26 @@ class CloudMapManager:
     def _extract_rooms_info(self, map_data: Dict) -> List[Dict]:
         """Extract room information from decoded map data."""
         rooms = []
-
-        # Log map_data structure for debugging
-        _LOGGER.debug("Map data keys: %s", map_data.keys())
-
-        # Try to get room names from the map data
         room_names = map_data.get('room_names', [])
+        
         if room_names:
-            _LOGGER.debug("Found room_names: %s", room_names)
             for room in room_names:
                 room_id = room.get('id')
                 room_name = room.get('name')
-                _LOGGER.debug("Processing room: id=%s, name=%s", room_id, room_name)
                 rooms.append({
                     'id': room_id,
                     'name': room_name if room_name else f"Room {room_id}"
                 })
-
-        # If we have rooms dict but no names, create generic names
-        rooms_dict = map_data.get('rooms', {})
-        if rooms_dict and not rooms:
-            _LOGGER.debug("Found rooms dict with %s entries", len(rooms_dict))
+        else:
+            # Fallback to rooms dict
+            rooms_dict = map_data.get('rooms', {})
             for room_id in rooms_dict.keys():
                 rooms.append({
                     'id': room_id,
                     'name': f"Room {room_id}"
                 })
 
-        # Check for segments (alternative format)
-        segments = map_data.get('segments', [])
-        if segments and not rooms:
-            _LOGGER.debug("Found segments: %s", len(segments))
-            for segment in segments:
-                if segment.get('type') == 'room':
-                    rooms.append({
-                        'id': segment.get('id'),
-                        'name': segment.get('name', f"Room {segment.get('id')}")
-                    })
-
-        # Sort by ID
         rooms.sort(key=lambda x: x['id'])
-
         _LOGGER.info("Extracted %s rooms from map data", len(rooms))
         return rooms
 
@@ -302,7 +318,6 @@ class CloudMapManager:
         """Download BV file from URL."""
         try:
             import aiohttp
-
             async with aiohttp.ClientSession() as session:
                 async with session.get(map_info.app_map_url) as resp:
                     if resp.status == 200:
@@ -319,8 +334,6 @@ class CloudMapManager:
     async def _decode_bv_file(self, bv_path: Path) -> Optional[Dict[str, Any]]:
         """Decode BV file using MapDecoder."""
         try:
-            # Use synchronous decoder in thread pool
-            import asyncio
             _LOGGER.debug("Decoding BV file: %s", bv_path)
             map_data = await asyncio.to_thread(
                 MapDecoder.decode_app_map,
@@ -353,32 +366,30 @@ class CloudMapManager:
         }
 
         json_path = self._get_json_path(map_info)
-
-        # Create directory if needed
         json_path.parent.mkdir(parents=True, exist_ok=True)
 
         async with aiofiles.open(json_path, 'w', encoding='utf-8') as f:
             await f.write(json.dumps(metadata, indent=2, ensure_ascii=False))
 
         _LOGGER.info("Saved metadata with %s rooms: %s", room_count, json_path.name)
-
-        # For debugging - show first few rooms
-        if rooms:
-            sample = rooms[:3]
-            _LOGGER.debug("Sample rooms: %s", sample)
+        
+        # Update cache
+        cache = get_map_cache()
+        cache.set_metadata(f"cloud_meta_{map_info.device_map_id}", {
+            'room_count': room_count,
+            'rooms': rooms,
+            'width': map_data.get('width'),
+            'height': map_data.get('height'),
+        })
 
         return json_path
 
     async def _render_png(self, map_data: Dict, map_info: CloudMapInfo) -> Optional[Path]:
-        """Render map to PNG using MapRenderer and save directly to public directory."""
+        """Render map to PNG using MapRenderer."""
         try:
             png_path = self._get_png_path(map_info)
-
-            # Create directory if needed
             png_path.parent.mkdir(parents=True, exist_ok=True)
 
-            # Use synchronous renderer in thread pool
-            import asyncio
             await asyncio.to_thread(
                 self.renderer.render_map,
                 map_data,
@@ -421,66 +432,16 @@ class CloudMapManager:
             safe = safe[:50]
         return safe
 
-    def get_png_url(self, map_info: CloudMapInfo) -> Optional[str]:
-        """Get public URL for PNG file."""
-        return map_info.png_url
-
-    async def get_map_data(self, map_info: CloudMapInfo) -> Optional[Dict]:
-        """Get decoded map data, downloading if necessary."""
-        bv_path = self._get_bv_path(map_info)
-
-        if not bv_path.exists():
-            _LOGGER.info("Map not cached, downloading: %s", map_info.device_map_id)
-            result = await self.download_map(map_info)
-            if not result:
-                return None
-
-        # Decode the map
-        try:
-            return await self._decode_bv_file(bv_path)
-        except Exception as e:
-            _LOGGER.error("Error decoding map: %s", e)
-            return None
-
     async def get_png_path(self, map_info: CloudMapInfo) -> Optional[Path]:
         """Get PNG path, generating if necessary."""
         png_path = self._get_png_path(map_info)
-
         if png_path.exists():
             return png_path
-
-        # Need to generate PNG
-        map_data = await self.get_map_data(map_info)
-        if map_data:
-            return await self._render_png(map_data, map_info)
-
         return None
-
-    async def get_rooms_info(self, map_info: CloudMapInfo) -> List[Dict]:
-        """Get room information for a map."""
-        # First check if we already have it in memory
-        if map_info.rooms:
-            return map_info.rooms
-
-        # Try to load from JSON
-        json_path = self._get_json_path(map_info)
-        if json_path.exists():
-            try:
-                async with aiofiles.open(json_path, 'r', encoding='utf-8') as f:
-                    content = await f.read()
-                    metadata = json.loads(content)
-                    rooms = metadata.get('rooms', [])
-                    map_info.rooms = rooms
-                    map_info.room_count = len(rooms)
-                    _LOGGER.debug("Loaded %s rooms from JSON for map %s", len(rooms), map_info.device_map_id)
-                    return rooms
-            except Exception as e:
-                _LOGGER.error("Error loading rooms from JSON: %s", e)
-
-        # If not, download the map
-        _LOGGER.info("Downloading map to get rooms: %s", map_info.device_map_id)
-        result = await self.download_map(map_info)
-        if result:
-            return result.get('rooms', [])
-
-        return []
+        
+    def get_map_by_id(self, device_map_id: int) -> Optional[CloudMapInfo]:
+        """Get CloudMapInfo object by device_map_id."""
+        for map_info in self._maps_cache:
+            if map_info.device_map_id == device_map_id:
+                return map_info
+        return None
