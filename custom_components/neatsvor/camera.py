@@ -11,6 +11,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from custom_components.neatsvor.liboshome.map.map_cache import get_map_cache
+
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
@@ -178,6 +180,8 @@ class NeatsvorCloudMapCamera(CoordinatorEntity, Camera):
         self._cloud_maps_ready = False
         self._map_path = None
         self._last_update = datetime.now()
+        self._updating = False
+        self._last_valid_image = None  # Последнее валидное изображение
         
         self._pending_image = None
         self._pending_map_id = None
@@ -223,11 +227,29 @@ class NeatsvorCloudMapCamera(CoordinatorEntity, Camera):
         if not self._cloud_maps_ready:
             return
 
-        if hasattr(self.coordinator, 'cloud_maps_sensor') and self.coordinator.cloud_maps_sensor:
-            sensor = self.coordinator.cloud_maps_sensor
-            if sensor and sensor.selected_map_id != self._current_map_id:
-                _LOGGER.info("Map changed from %s to %s", self._current_map_id, sensor.selected_map_id)
-                self.hass.async_create_task(self.async_update_image())
+        if not hasattr(self.coordinator, 'cloud_maps_sensor'):
+            return
+
+        sensor = self.coordinator.cloud_maps_sensor
+        if not sensor:
+            return
+
+        new_selected_id = sensor.selected_map_id
+        
+        if (new_selected_id is not None and 
+            new_selected_id != self._current_map_id and
+            not self._updating):
+            
+            _LOGGER.info("Map changed from %s to %s", self._current_map_id, new_selected_id)
+            self._updating = True
+            self.hass.async_create_task(self._async_safe_update_image())
+            
+    async def _async_safe_update_image(self):
+        """Safe image update with flag reset."""
+        try:
+            await self.async_update_image()
+        finally:
+            self._updating = False
 
     @property
     def entity_picture(self) -> str | None:
@@ -269,70 +291,94 @@ class NeatsvorCloudMapCamera(CoordinatorEntity, Camera):
             _LOGGER.debug("No map selected")
             return
 
-        for m in sensor._maps:
-            if m['id'] == selected_id:
-                png_path = m.get('png_path')
-                if png_path:
-                    _LOGGER.info("Loading image for map %s from: %s", selected_id, png_path)
-                    await self._async_load_image(png_path, selected_id)
-                else:
-                    _LOGGER.warning("No PNG path for map %s", selected_id)
-                break
+        # Получаем CloudMapInfo объект из менеджера
+        map_info = self.coordinator.vacuum.cloud_maps.get_map_by_id(selected_id)
+        if not map_info:
+            _LOGGER.warning("Map info not found for ID %s", selected_id)
+            return
+
+        # Проверяем и генерируем PNG если нужно
+        png_path = await self.coordinator.vacuum.cloud_maps.ensure_png_exists(map_info)
+        if png_path:
+            _LOGGER.info("Loading image for map %s from: %s", selected_id, png_path)
+            await self._async_load_image(png_path, selected_id)
+        else:
+            _LOGGER.debug("PNG not ready yet for map %s (generating in background)", selected_id)
 
     async def _async_load_image(self, png_path: str, map_id: int) -> None:
-        """Load image from file."""
+        """Load image from disk - simple and fast."""
         try:
             path = Path(png_path)
             if not path.exists():
-                _LOGGER.warning("PNG file not found: %s", png_path)
+                _LOGGER.warning("PNG not found for map %s: %s", map_id, png_path)
                 return
-
+            
             import aiofiles
             async with aiofiles.open(path, 'rb') as f:
                 image_bytes = await f.read()
-
-                sensor = self.coordinator.cloud_maps_sensor
-                if sensor and sensor.selected_map_id == map_id:
-                    self._current_image = image_bytes
-                    self._current_map_id = map_id
-                    self._image_timestamp = path.stat().st_mtime
-                    self._last_update = datetime.now()
-                    _LOGGER.info("Loaded image for camera: %s (%s bytes)", path.name, len(self._current_image))
-                else:
-                    self.prefetch_image(map_id, image_bytes)
-                    _LOGGER.info("Prefetched image for map %s: %s (%s bytes)", map_id, path.name, len(image_bytes))
-
-                self.async_write_ha_state()
-
+            
+            # Обновляем изображение
+            self._current_image = image_bytes
+            self._current_map_id = map_id
+            self._last_valid_image = image_bytes  # Сохраняем как последнее валидное
+            self._last_update = datetime.now()
+            self.async_write_ha_state()
+            _LOGGER.debug("Loaded PNG for map %s (%s bytes)", map_id, len(image_bytes))
+            
         except Exception as e:
-            _LOGGER.error("Error loading image for camera: %s", e, exc_info=True)
+            _LOGGER.error("Error loading PNG for map %s: %s", map_id, e)
 
     async def async_camera_image(
         self, width: int | None = None, height: int | None = None
     ) -> bytes | None:
-        """Return camera image with prefetch support."""
+        """Return camera image - ALWAYS return something (never None)."""
         sensor = self.coordinator.cloud_maps_sensor
         if not sensor:
-            return None
-
+            return self._get_loading_image()
+        
         selected_id = sensor.selected_map_id
         if not selected_id:
-            return None
-
+            return self._get_loading_image()
+        
+        # Если есть prefetch - используем
         if self._next_map_id == selected_id and self._next_image:
             self._current_image = self._next_image
             self._current_map_id = selected_id
             self._last_update = datetime.now()
             self._next_image = None
             self._next_map_id = None
+            self._last_valid_image = self._current_image
             self.async_write_ha_state()
             _LOGGER.debug("Used prefetched image for map %s", selected_id)
             return self._current_image
-
+        
+        # Если есть текущее изображение - показываем его
         if self._current_map_id == selected_id and self._current_image:
             return self._current_image
+        
+        # Если есть последнее валидное изображение - показываем его (даже от другой карты!)
+        if self._last_valid_image:
+            return self._last_valid_image
+        
+        # Всё остальное - заглушка "Загрузка..."
+        return self._get_loading_image()
 
-        return None
+    def _get_loading_image(self) -> bytes:
+        """Return a loading placeholder image."""
+        try:
+            import io
+            from PIL import Image, ImageDraw
+            
+            img = Image.new('RGB', (400, 400), color=(240, 240, 240))
+            draw = ImageDraw.Draw(img)
+            draw.text((150, 190), "Loading map...", fill=(100, 100, 100))
+            
+            img_byte_arr = io.BytesIO()
+            img.save(img_byte_arr, format='PNG')
+            return img_byte_arr.getvalue()
+        except Exception:
+            # Если PIL недоступен, возвращаем минимальный PNG 1x1
+            return b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82'
 
     @property
     def available(self) -> bool:

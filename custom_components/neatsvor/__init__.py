@@ -293,7 +293,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     asyncio.create_task(_delayed_init())
 
-    await coordinator.async_config_entry_first_refresh()
+    #await coordinator.async_config_entry_first_refresh()
+    asyncio.create_task(coordinator.async_config_entry_first_refresh())
 
     await _async_register_services(hass)
 

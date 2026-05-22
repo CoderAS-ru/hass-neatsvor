@@ -791,11 +791,19 @@ class NeatsvorCloudMapsSensor(CoordinatorEntity, SensorEntity):
             self._attr_native_value = str(len(self._maps))
             _LOGGER.info("Updated %s maps in sensor", len(self._maps))
 
+            # ✅ НОВОЕ: Предзагрузка PNG для первых 3 карт (как в истории)
             if self._maps:
-                for map_info in self._maps:
-                    if not map_info.get('local_path'):
-                        _LOGGER.info("Scheduling background download for map %s", map_info['id'])
-                        asyncio.create_task(self._download_map_background(map_info['id']))
+                preload_count = min(3, len(self._maps))
+                _LOGGER.info("Preloading PNGs for first %s cloud maps...", preload_count)
+                for i in range(preload_count):
+                    map_id = self._maps[i]['id']
+                    asyncio.create_task(self._preload_cloud_map_png(map_id))
+                
+                # Автовыбор последней карты (как в истории)
+                if not self.selected_map_id:
+                    latest_map = self._maps[0]
+                    _LOGGER.info("Auto-selecting latest cloud map: %s", latest_map['id'])
+                    await self.select_map(latest_map['id'])
 
             if hasattr(self.coordinator, 'cloud_map_select') and self.coordinator.cloud_map_select:
                 _LOGGER.debug("Updating select")
@@ -807,6 +815,26 @@ class NeatsvorCloudMapsSensor(CoordinatorEntity, SensorEntity):
 
         except Exception as e:
             _LOGGER.error("Error loading maps: %s", e, exc_info=True)
+
+    async def _preload_cloud_map_png(self, map_id: int):
+        """Preload PNG for a cloud map (like history preloading)."""
+        # Проверяем, инициализирован ли менеджер
+        if not hasattr(self.coordinator.vacuum, 'cloud_maps'):
+            _LOGGER.debug("Cloud maps not ready yet, skipping preload for %s", map_id)
+            return
+        
+        if not hasattr(self.coordinator.vacuum.cloud_maps, 'get_map_by_id'):
+            _LOGGER.debug("get_map_by_id not available yet, skipping preload for %s", map_id)
+            return
+        
+        cloud_map_info = self.coordinator.vacuum.cloud_maps.get_map_by_id(map_id)
+        if cloud_map_info:
+            _LOGGER.debug("Preloading PNG for cloud map %s", map_id)
+            png_path = await self.coordinator.vacuum.cloud_maps.ensure_png_exists(cloud_map_info)
+            if png_path:
+                _LOGGER.debug("PNG preloaded for map %s", map_id)
+            else:
+                _LOGGER.debug("PNG generation started for map %s", map_id)
 
     async def _prefetch_nearby_maps(self, current_index: int):
         """Prefetch nearby maps for faster switching."""
@@ -886,30 +914,39 @@ class NeatsvorCloudMapsSensor(CoordinatorEntity, SensorEntity):
 
     async def select_map(self, map_id: int) -> bool:
         """Select map by ID."""
-        _LOGGER.info("select_map(%s) called", map_id)
-
-        for i, m in enumerate(self._maps):
+        _LOGGER.info("Selecting map %s", map_id)
+        
+        # Находим карту по ID
+        map_info = None
+        for m in self._maps:
             if m['id'] == map_id:
-                self.selected_map_id = map_id
-                self.async_write_ha_state()
-                _LOGGER.info("Selected map: %s (ID: %s)", m['name'], map_id)
-
-                # Prefetch nearby maps
-                asyncio.create_task(self._prefetch_nearby_maps(i))
-
-                if hasattr(self.coordinator, 'cloud_map_camera') and self.coordinator.cloud_map_camera:
-                    _LOGGER.debug("Updating camera after selection")
-                    camera = self.coordinator.cloud_map_camera
-                    # Проверяем, что камера полностью инициализирована
-                    if camera.hass is not None:
-                        camera.async_write_ha_state()
-                    else:
-                        _LOGGER.debug("Camera not yet initialized, skipping async_write_ha_state")
-
-                return True
-
-        _LOGGER.warning("Map ID %s not found in %s", map_id, [m['id'] for m in self._maps])
-        return False
+                map_info = m
+                break
+        
+        if not map_info:
+            _LOGGER.warning("Map %s not found", map_id)
+            return False
+        
+        self.selected_map_id = map_id
+        self.async_write_ha_state()
+        
+        # Получаем CloudMapInfo объект из менеджера
+        cloud_map_info = self.coordinator.vacuum.cloud_maps.get_map_by_id(map_id)
+        if cloud_map_info:
+            # Генерируем PNG только для выбранной карты
+            png_path = await self.coordinator.vacuum.cloud_maps.ensure_png_exists(cloud_map_info)
+            if png_path:
+                _LOGGER.info("PNG ready for map %s", map_id)
+            else:
+                _LOGGER.debug("PNG generation started for map %s", map_id)
+        else:
+            _LOGGER.warning("CloudMapInfo not found for map %s", map_id)
+        
+        # Обновляем камеру
+        if hasattr(self.coordinator, 'cloud_map_camera'):
+            await self.coordinator.cloud_map_camera.async_update_image()
+        
+        return True
 
     async def use_selected_cloud_map(self) -> bool:
         """Use the currently selected cloud map as the current map on the robot."""
@@ -2231,6 +2268,7 @@ class NeatsvorCleanHistorySensor(CoordinatorEntity, SensorEntity):
                         return f"/local/{str(png_path.relative_to('/config/www'))}"
         
         return None
+
 
 class NeatsvorMalfunctionSensor(CoordinatorEntity, SensorEntity):
     """Sensor for robot malfunctions - shows error details separately."""
