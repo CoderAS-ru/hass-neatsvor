@@ -601,24 +601,22 @@ class NeatsvorMapSensor(CoordinatorEntity, SensorEntity):
                         }
 
             if hasattr(self.coordinator.vacuum, 'visualizer'):
-                filename = await self.coordinator.vacuum.visualizer.render_static_map(
-                    map_data,
-                    title=f"map_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-                    map_type="realtime"
-                )
-
-                if filename and Path(filename).exists():
-                    self._map_path = filename
-                    import aiofiles
-                    async with aiofiles.open(filename, 'rb') as f:
-                        self._map_image = await f.read()
+                realtime_dir = Path("/config/www/neatsvor/maps/realtime")
+                if realtime_dir.exists():
+                    png_files = await asyncio.to_thread(lambda: list(realtime_dir.glob("*.png")))
+                    if png_files:
+                        latest_file = max(png_files, key=lambda f: f.stat().st_mtime)
+                        self._map_path = str(latest_file)
+                        import aiofiles
+                        async with aiofiles.open(latest_file, 'rb') as f:
+                            self._map_image = await f.read()
+                        _LOGGER.debug("Map sensor reading from: %s", latest_file.name)
 
             self._last_update = datetime.now()
             self._attr_native_value = f"{len(self._rooms)} rooms"
 
             _LOGGER.info("Map processed: %s rooms, %s presets", len(self._rooms), len(self._room_presets))
 
-            # Проверяем, что сенсор уже инициализирован
             if self.hass is not None:
                 self.async_write_ha_state()
             else:
