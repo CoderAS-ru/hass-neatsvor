@@ -1678,6 +1678,81 @@ class NeatsvorCleanHistorySensor(CoordinatorEntity, SensorEntity):
                             len(self._records), 
                             sum(1 for r in self._records if r['downloaded']))
 
+                # ✅ ИСПРАВЛЕНО: Всегда проверяем наличие новых записей
+                if self._records:
+                    latest_record = self._records[0]
+                    latest_id = latest_record['record_id']
+                    
+                    # Если это новая запись (отличается от выбранной)
+                    if self.selected_record_id != latest_id:
+                        _LOGGER.info("New history record detected: %s (was %s)", latest_id, self.selected_record_id)
+                        
+                        if latest_record.get('downloaded') and latest_record.get('png_path'):
+                            await self.select_record(latest_id)
+                        else:
+                            if latest_id not in self._download_tasks or self._download_tasks[latest_id].done():
+                                _LOGGER.info("Auto-downloading new map for record %s", latest_id)
+                                self._download_tasks[latest_id] = asyncio.create_task(
+                                    self._download_record_map(latest_id, auto_select=True)
+                                )
+                    else:
+                        _LOGGER.debug("No new records, current selected: %s", self.selected_record_id)
+
+                # Clean up old maps (keep last 50)
+                await self._cleanup_old_maps()
+
+                if hasattr(self.coordinator, 'clean_history_select'):
+                    await self.coordinator.clean_history_select.async_update()
+            else:
+                _LOGGER.warning("No history records found")
+                self._records = []
+                self._attr_native_value = "0 records"
+
+        except Exception as e:
+            _LOGGER.error("Error loading history: %s", e, exc_info=True)
+        finally:
+            self._loading = False
+            self.async_write_ha_state()
+        """Load ALL history records - list only, without maps."""
+        if self._loading:
+            return
+
+        if not self.coordinator or not self.coordinator.vacuum:
+            return
+
+        if not hasattr(self.coordinator.vacuum, 'clean_history'):
+            _LOGGER.warning("vacuum.clean_history not available")
+            return
+
+        self._loading = True
+        try:
+            device_id = self.coordinator.vacuum.info.device_id
+            _LOGGER.info("Loading clean history for device %s...", device_id)
+
+            records = await self.coordinator.vacuum.clean_history.get_clean_history(device_id, 50)
+
+            if records:
+                self._records = []
+                for record in records:
+                    png_path = self._get_cached_png_path(record.record_id, record.clean_time)
+                    downloaded = png_path is not None and png_path.exists()
+
+                    self._records.append({
+                        'record_id': record.record_id,
+                        'clean_time': record.clean_time,
+                        'clean_area': round(record.area_m2, 1),
+                        'clean_duration': record.duration_minutes,
+                        'finished': record.finished,
+                        'record_url': record.record_url,
+                        'downloaded': downloaded,
+                        'png_path': str(png_path) if downloaded else None
+                    })
+
+                self._attr_native_value = str(len(self._records))
+                _LOGGER.info("Loaded %s history records (%s cached)", 
+                            len(self._records), 
+                            sum(1 for r in self._records if r['downloaded']))
+
                 # Автоматически выбираем последнюю запись (первую в списке, так как API возвращает от новых к старым)
                 if self._records and not self.selected_record_id:
                     latest_record = self._records[0]
