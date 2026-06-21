@@ -169,25 +169,6 @@ class AsyncMapVisualizer:
         from datetime import datetime
         return datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    async def _auto_open_file(self, filepath: Path) -> None:
-        """Automatically open file in viewer."""
-        if not filepath.exists():
-            return
-
-        try:
-            system = platform.system()
-
-            if system == "Windows":
-                os.startfile(filepath)
-            elif system == "Darwin":
-                subprocess.run(["open", str(filepath)], check=False)
-            else:
-                subprocess.run(["xdg-open", str(filepath)], check=False)
-
-            _LOGGER.debug("File opened: %s", filepath)
-        except Exception as e:
-            _LOGGER.debug("Failed to open file: %s", e)
-
     def get_stats(self) -> Dict[str, Any]:
         """Return statistics about saved maps."""
         stats = {
