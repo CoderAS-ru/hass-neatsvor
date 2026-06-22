@@ -648,7 +648,7 @@ async def _async_register_services(hass: HomeAssistant):
                     "title": "Neatsvor Clean History"
                 })
 
-    async def async_xiaomi_miio_zone_clean(call: ServiceCall) -> None:
+    async def async_vacuum_zone_clean(call: ServiceCall) -> None:
         """Alias for vacuum_clean_zone to maintain compatibility with xiaomi-vacuum-map-card."""
         entity_id = call.data.get("entity_id")
         zones = call.data.get("zones", [])
@@ -656,7 +656,7 @@ async def _async_register_services(hass: HomeAssistant):
         if not zones:
             zones = call.data.get("zone", [])
 
-        _LOGGER.info("Xiaomi miio zone clean alias called: entity=%s, zones=%s", entity_id, zones)
+        _LOGGER.info("Neatsvor vacuum zone clean alias called: entity=%s, zones=%s", entity_id, zones)
 
         for entry_id, coord in hass.data[DOMAIN].items():
             if hasattr(coord, 'vacuum') and coord.vacuum:
@@ -708,8 +708,13 @@ async def _async_register_services(hass: HomeAssistant):
     hass.services.async_register(DOMAIN, "cleanup_history_maps", async_cleanup_history_maps)
     hass.services.async_register(DOMAIN, "cleanup_all_except_current", async_cleanup_all_except_current)
 
-    # Register service under the name expected by the map card
-    hass.services.async_register("xiaomi_miio", "vacuum_clean_zone", async_xiaomi_miio_zone_clean)
+    # --- ZONE CLEAN SERVICE ---
+    # NEW: Register the service under the integration's own name
+    # hass.services.async_register(DOMAIN, "vacuum_clean_zone", async_vacuum_zone_clean)
+
+    # OLD: Register service under the name expected by the map card (Xiaomi Miio)
+    # Commented out to avoid conflicts. Can be uncommented for rollback.
+    hass.services.async_register("xiaomi_miio", "vacuum_clean_zone", async_vacuum_zone_clean)
 
     # Subscribe to events
     hass.bus.async_listen("neatsvor_history_map_updated", handle_history_map_updated)
