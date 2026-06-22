@@ -11,7 +11,7 @@
                 "coordinates_to_meters_divider": 1000,
                 "repeats_type": "NONE",
                 "service_call_schema": {
-                    "service": "xiaomi_miio.vacuum_clean_zone",
+                    "service": "neatsvor.vacuum_clean_zone",
                     "service_data": {
                         "entity_id": "[[entity_id]]",
                         "zones": "[[selection]]"
