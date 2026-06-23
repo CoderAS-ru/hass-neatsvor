@@ -14,7 +14,7 @@ zones:
   enable_drag: true
   enable_rotate: true
   enable_remove_last_point: true
-  service: xiaomi_miio.vacuum_clean_zone
+  service: neatsvor.vacuum_clean_zone
   service_data:
     entity_id: vacuum.s700_smart_vacuum
     zones: "[[x1, y1, x2, y2, 1]]"
