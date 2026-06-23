@@ -2,7 +2,7 @@
 
 [![EN](https://img.shields.io/badge/English-blue)](README.md)
 [![RU](https://img.shields.io/badge/Русский-red)](README_ru.md)
-[![HACS Custom](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz/docs/faq/custom_repositories)
+[![HACS Default](https://img.shields.io/badge/HACS-Default-orange.svg)](https://github.com/hacs/default)
 [![GitHub Release](https://img.shields.io/github/v/release/CoderAS-ru/hass-neatsvor)](https://github.com/CoderAS-ru/hass-neatsvor/releases/latest)
 [![GitHub Downloads](https://img.shields.io/github/downloads/CoderAS-ru/hass-neatsvor/total)](https://github.com/CoderAS-ru/hass-neatsvor/releases)
 [![License](https://img.shields.io/github/license/CoderAS-ru/hass-neatsvor)](LICENSE)
