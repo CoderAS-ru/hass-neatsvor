@@ -710,7 +710,7 @@ async def _async_register_services(hass: HomeAssistant):
 
     # --- ZONE CLEAN SERVICE ---
     # NEW: Register the service under the integration's own name
-    # hass.services.async_register(DOMAIN, "vacuum_clean_zone", async_vacuum_zone_clean)
+    hass.services.async_register(DOMAIN, "vacuum_clean_zone", async_vacuum_zone_clean)
 
     # OLD: Register service under the name expected by the map card (Xiaomi Miio)
     # Commented out to avoid conflicts. Can be uncommented for rollback.
