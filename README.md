@@ -37,11 +37,18 @@ Control your Neatsvor robot vacuum (and other [BlackVision](https://www.blackvis
 
 ## Installation
 
-### Via HACS (Recommended)
+### Via HACS
 
-- Add this repository to HACS as a custom repository
-- Install the Neatsvor integration
-- Restart Home Assistant
+1. Find and install the "Neatsvor" integration in **HACS** (default repository).
+2. Restart Home Assistant.
+
+### Via HACS (Custom Repository)
+
+If the integration is not available in your HACS list, you can add it manually:
+
+1. Add this repository to HACS as a custom repository.
+2. Install the Neatsvor integration.
+3. Restart Home Assistant.
 
 ### Manual Installation
 
