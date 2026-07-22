@@ -782,7 +782,8 @@ class NeatsvorCloudMapsSensor(CoordinatorEntity, SensorEntity):
                     'height': m.height,
                     'dev_map_url': m.dev_map_url,
                     'dev_map_md5': m.dev_map_md5,
-                    'json_path': str(self.coordinator.vacuum.cloud_maps._get_json_path(m)) if hasattr(self.coordinator.vacuum.cloud_maps, '_get_json_path') else None,
+                    # 'json_path': str(self.coordinator.vacuum.cloud_maps._get_json_path(m)) if hasattr(self.coordinator.vacuum.cloud_maps, '_get_json_path') else None,
+                    'json_path': None,
                 }
                 self._maps.append(map_info)
                 _LOGGER.debug("Map %s: ID=%s, name=%s, rooms=%s, png=%s", i + 1, m.device_map_id, m.name, m.room_count, m.png_url)
