@@ -150,6 +150,54 @@ After this, you can use voice commands in the "Smart Home with Alice" app:
 | `neatsvor.build_map` |	Perform a fast map build without cleaning |
 | `neatsvor.empty_dust` |	Force empty the dust container |
 
+## Example Automation: Status Notifications
+
+This example automation sends you notifications about your vacuum's status, including a map preview when an error occurs. It supports both persistent notifications in the Home Assistant UI and push notifications to your mobile device.
+
+### Features
+
+- 🔔 **Start/Pause/Return notifications** — get alerted when the vacuum starts, pauses, or returns to the dock.
+- ✅ **Cleaning summary** — receive a report with cleaning time, area, battery level, and a link to the map.
+- ⚠️ **Error alerts** — get a critical notification with the map showing the robot's last position.
+- 🔋 **Charging status** — notifications when the vacuum is fully charged.
+
+### How to use
+
+1. Copy the automation code from the link below.
+2. Replace the placeholder variables with your own entity names and personal details.
+3. Paste the automation into your `automations.yaml` file or create it via the Home Assistant UI.
+
+[📄 Download the automation example](SAMPLE_automation_neatsvor_status.yaml)
+
+### Required entities
+
+Make sure you have the following sensors from the Neatsvor integration:
+
+- `sensor.YOUR_MODEL_status` — current vacuum status.
+- `sensor.YOUR_MODEL_clean_history` — cleaning history records.
+- `sensor.YOUR_MODEL` — map data with the `map_path` attribute.
+- `sensor.YOUR_MODEL_current_clean_time` — current cleaning time.
+- `sensor.YOUR_MODEL_current_clean_area` — current cleaning area.
+- `sensor.YOUR_MODEL_battery` — battery level.
+
+### Customization
+
+You can easily customize the automation by modifying the variables at the top of the script:
+
+```yaml
+variables:
+  # ========== PERSONAL DATA (REPLACE WITH YOUR OWN) ==========
+  external_url: "https://YOUR-DOMAIN.duckdns.org:8123"    # Your Home Assistant URL
+  mobile_notify_service: "notify.mobile_app_YOUR_DEVICE" # Your mobile notification service
+  
+  # ========== ENTITY NAMES (REPLACE WITH YOUR OWN) ==========
+  vacuum_status_entity: "sensor.YOUR_MODEL_status"
+  vacuum_clean_history: "sensor.YOUR_MODEL_clean_history"
+  vacuum_map_data: "sensor.YOUR_MODEL"
+  vacuum_clean_time: "sensor.YOUR_MODEL_current_clean_time"
+  vacuum_clean_area: "sensor.YOUR_MODEL_current_clean_area"
+  vacuum_battery: "sensor.YOUR_MODEL_battery"
+
 ## Supported Devices
 ### Neatsvor
   - [S700](https://neatsvor.ru/product/productDetail?spuId=28)
