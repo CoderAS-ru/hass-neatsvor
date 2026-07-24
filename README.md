@@ -197,6 +197,7 @@ variables:
   vacuum_clean_time: "sensor.YOUR_MODEL_current_clean_time"
   vacuum_clean_area: "sensor.YOUR_MODEL_current_clean_area"
   vacuum_battery: "sensor.YOUR_MODEL_battery"
+```
 
 ## Supported Devices
 ### Neatsvor
