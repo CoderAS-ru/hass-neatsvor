@@ -1,0 +1,292 @@
+# ============================================================
+# Neatsvor: Уведомления о статусе пылесоса
+# ============================================================
+# Эта автоматизация отправляет уведомления при изменении статуса
+# вашего робота-пылесоса Neatsvor.
+#
+# ВНИМАНИЕ! Перед использованием:
+# 1. Замените все значения в блоке variables на свои
+# 2. Убедитесь, что у вас есть необходимые сенсоры
+# 3. Проверьте правильность имён сущностей
+# ============================================================
+
+alias: "Neatsvor: Уведомления о статусе"
+description: Отправляет уведомления при изменении статуса пылесоса
+triggers:
+  - entity_id:
+      - sensor.s700_status  # Замените на ваш сенсор статуса
+    not_to:
+      - unknown
+      - unavailable
+    trigger: state
+actions:
+  - variables:
+      # ============================================================
+      # НАСТРОЙКИ УВЕДОМЛЕНИЙ
+      # ============================================================
+      
+      # Настройки звука для уведомлений на телефоне
+      sound_critical: false
+      sound_name: default
+      sound_volume: 0.5
+      
+      # ============================================================
+      # ПЕРСОНАЛЬНЫЕ ДАННЫЕ (ЗАМЕНИТЕ НА СВОИ)
+      # ============================================================
+      
+      # Внешний URL вашего Home Assistant (для ссылок на карты)
+      # Примеры:
+      #   - Через домен: "https://my-ha.duckdns.org:8123"
+      #   - По IP: "http://192.168.1.100:8123"
+      external_url: "https://ВАШ-ДОМЕН.duckdns.org:8123"
+      
+      # Сервис для отправки уведомлений на телефон
+      # Обычно: notify.mobile_app_НАЗВАНИЕ_УСТРОЙСТВА
+      # Узнать можно в Настройки -> Устройства и службы -> Ваше устройство
+      mobile_notify_service: "notify.mobile_app_ВАШЕ_УСТРОЙСТВО"
+      
+      # ============================================================
+      # ИМЕНА СУЩНОСТЕЙ (ЗАМЕНИТЕ НА СВОИ)
+      # ============================================================
+      # Сенсоры вашего пылесоса
+      vacuum_status_entity: "sensor.ВАША_МОДЕЛЬ_status"                # Статус уборки
+      vacuum_clean_history: "sensor.ВАША_МОДЕЛЬ_clean_history"         # История уборок
+      vacuum_map_data: "sensor.ВАША_МОДЕЛЬ_vacuum_map"                # Данные карты (должен иметь map_path)
+      vacuum_clean_time: "sensor.ВАША_МОДЕЛЬ_current_clean_time"      # Текущее время уборки
+      vacuum_clean_area: "sensor.ВАША_МОДЕЛЬ_current_clean_area"      # Текущая площадь
+      vacuum_battery: "sensor.ВАША_МОДЕЛЬ_battery"                    # Уровень заряда
+
+  - choose:
+      # ============================================================
+      # 1. НАЧАЛО УБОРКИ
+      # ============================================================
+      - conditions:
+          - condition: template
+            value_template: >-
+              {{ 'уборк' in trigger.to_state.state.lower() or 'cleaning' in
+              trigger.to_state.state.lower() }}
+        sequence:
+          - variables:
+              message: |-
+                🧹 Начата уборка квартиры!
+                Статус: {{ trigger.to_state.state }}
+              title: 🧹 Neatsvor Vacuum
+          - action: notify.persistent_notification
+            data:
+              message: "{{ message }}"
+              title: "{{ title }}"
+          - action: "{{ mobile_notify_service }}"
+            data:
+              message: "{{ message }}"
+              title: "{{ title }}"
+              data:
+                push:
+                  sound:
+                    name: "{{ sound_name }}"
+                    critical: "{{ sound_critical }}"
+                    volume: "{{ sound_volume }}"
+          - action: counter.increment
+            metadata: {}
+            target:
+              entity_id: counter.kolichestvo_uborok
+            data: {}
+
+      # ============================================================
+      # 2. ПАУЗА
+      # ============================================================
+      - conditions:
+          - condition: template
+            value_template: >-
+              {{ 'пауз' in trigger.to_state.state.lower() or 'paused' in
+              trigger.to_state.state.lower() }}
+        sequence:
+          - variables:
+              message: ⏸️ Уборка приостановлена
+              title: ⏸️ Neatsvor Vacuum
+          - action: notify.persistent_notification
+            data:
+              message: "{{ message }}"
+              title: "{{ title }}"
+          - action: "{{ mobile_notify_service }}"
+            data:
+              message: "{{ message }}"
+              title: "{{ title }}"
+              data:
+                push:
+                  sound:
+                    name: "{{ sound_name }}"
+                    critical: "{{ sound_critical }}"
+                    volume: "{{ sound_volume }}"
+
+      # ============================================================
+      # 3. ВОЗВРАТ НА БАЗУ
+      # ============================================================
+      - conditions:
+          - condition: template
+            value_template: >-
+              {{ 'возврат' in trigger.to_state.state.lower() or 'returning' in
+              trigger.to_state.state.lower() }}
+        sequence:
+          - variables:
+              message: 🏠 Пылесос возвращается на базу
+              title: 🏠 Neatsvor Vacuum
+          - action: notify.persistent_notification
+            data:
+              message: "{{ message }}"
+              title: "{{ title }}"
+          - action: "{{ mobile_notify_service }}"
+            data:
+              message: "{{ message }}"
+              title: "{{ title }}"
+              data:
+                push:
+                  sound:
+                    name: "{{ sound_name }}"
+                    critical: "{{ sound_critical }}"
+                    volume: "{{ sound_volume }}"
+
+      # ============================================================
+      # 4. ЗАВЕРШЕНИЕ УБОРКИ (с картой и статистикой)
+      # ============================================================
+      - conditions:
+          - condition: and
+            conditions:
+              - condition: template
+                value_template: >-
+                  {{ 'заряж' in trigger.to_state.state.lower() or 'charged' in
+                  trigger.to_state.state.lower() or 'зарядк' in
+                  trigger.to_state.state.lower() }}
+              - condition: template
+                value_template: >-
+                  {{ 'уборк' in trigger.from_state.state.lower() or 'cleaning'
+                  in trigger.from_state.state.lower() or 'пауз' in
+                  trigger.from_state.state.lower() or 'paused' in
+                  trigger.from_state.state.lower() or 'возврат' in
+                  trigger.from_state.state.lower() or 'returning' in
+                  trigger.from_state.state.lower() }}
+        sequence:
+          - delay:
+              seconds: 2
+          - variables:
+              last_record_id: "{{ state_attr(vacuum_clean_history, 'selected_record_id') }}"
+              last_record: >-
+                {% set records = state_attr(vacuum_clean_history, 'records') %}
+                {% for record in records if record.record_id == last_record_id
+                %}
+                  {{ record }}
+                {% endfor %}
+              last_time: "{{ last_record.clean_time if last_record else 'неизвестно' }}"
+              last_duration: "{{ last_record.clean_duration if last_record else 0 }}"
+              last_area: "{{ last_record.clean_area if last_record else 0 }}"
+              clean_time: "{{ states(vacuum_clean_time) }}"
+              clean_area: "{{ states(vacuum_clean_area) }}"
+              battery: "{{ states(vacuum_battery) }}"
+              last_png_path: "{{ last_record.png_path if last_record else '' }}"
+              latest_map: >-
+                {{ last_png_path | replace('/config/www', '/local') if
+                last_png_path else '' }}
+              full_url: "{{ external_url }}{{ latest_map }}"
+              message: |-
+                ✅ Уборка завершена!
+                📅 Время: {{ last_time }}
+                ⏱️ Длительность: {{ clean_time }} мин
+                📏 Площадь: {{ clean_area }} м²
+                🔋 Заряд: {{ battery }}%
+
+                🗺️ [Карта уборки]({{ full_url }})
+              title: ✅ Neatsvor Vacuum
+          - action: notify.persistent_notification
+            data:
+              message: "{{ message }}"
+              title: "{{ title }}"
+          - action: "{{ mobile_notify_service }}"
+            data:
+              message: "{{ message }}"
+              title: "{{ title }}"
+              data:
+                clickAction: "{{ full_url }}"
+                image: "{{ full_url }}"
+                push:
+                  sound:
+                    name: default
+                    critical: false
+                    volume: 0.5
+
+      # ============================================================
+      # 5. ПОЛНАЯ ЗАРЯДКА
+      # ============================================================
+      - conditions:
+          - condition: and
+            conditions:
+              - condition: template
+                value_template: >-
+                  {{ 'заряжен' in trigger.to_state.state.lower() or 'charged' in
+                  trigger.to_state.state.lower() }}
+              - condition: template
+                value_template: >-
+                  {{ 'зарядк' in trigger.from_state.state.lower() or 'charging'
+                  in trigger.from_state.state.lower() }}
+        sequence:
+          - variables:
+              battery: "{{ states(vacuum_battery) }}"
+              message: |-
+                🔋 Пылесос полностью заряжен!
+                Уровень заряда: {{ battery }}%
+              title: 🔋 Neatsvor Vacuum
+          - action: notify.persistent_notification
+            data:
+              message: "{{ message }}"
+              title: "{{ title }}"
+          - action: "{{ mobile_notify_service }}"
+            data:
+              message: "{{ message }}"
+              title: "{{ title }}"
+              data:
+                push:
+                  sound:
+                    name: "{{ sound_name }}"
+                    critical: "{{ sound_critical }}"
+                    volume: "{{ sound_volume }}"
+
+      # ============================================================
+      # 6. ОШИБКА (с картой места остановки)
+      # ============================================================
+      - conditions:
+          - condition: template
+            value_template: >-
+              {{ 'ошибк' in trigger.to_state.state.lower() or 'error' in
+              trigger.to_state.state.lower() }}
+        sequence:
+          - variables:
+              message: ⚠️ {{ trigger.to_state.state }}
+              title: ⚠️ Neatsvor Vacuum
+              sound_critical: true
+              sound_name: alarm.caf
+              sound_volume: 1
+              latest_map: >-
+                {{ state_attr(vacuum_map_data, 'map_path') |
+                replace('/config/www', '/local') }}
+              full_url: "{{ external_url }}{{ latest_map }}"
+          - delay:
+              seconds: 2
+          - action: notify.persistent_notification
+            data:
+              message: |-
+                ⚠️ {{ trigger.to_state.state }}
+
+                [📍 Открыть карту]({{ full_url }})
+              title: ⚠️ Neatsvor Vacuum
+          - action: "{{ mobile_notify_service }}"
+            data:
+              message: ⚠️ {{ trigger.to_state.state }}
+              title: ⚠️ Neatsvor Vacuum
+              data:
+                clickAction: "{{ full_url }}"
+                image: "{{ full_url }}"
+                push:
+                  sound:
+                    name: alarm.caf
+                    critical: true
+                    volume: 1
+    default: []
+mode: single
