@@ -147,8 +147,14 @@ class NeatsvorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 )
 
             except Exception as err:
+                error_msg = str(err)
                 _LOGGER.error("Connection error: %s", err)
-                errors["base"] = "invalid_auth"
+                
+                # Проверяем конкретные ошибки
+                if "90104" in error_msg or "Login failed" in error_msg:
+                    errors["base"] = "account_in_use"
+                else:
+                    errors["base"] = "invalid_auth"
 
         # Simple form with app, phone code, email and password
         return self.async_show_form(
