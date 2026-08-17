@@ -18,7 +18,7 @@
       }
     },
     "error": {
-      "account_in_use": "Account is already connected in the official app on other device. Please log out from the app on device and try again."
+      "account_in_use": "Account is already connected in the official app on other device. Please log out from the app on device and try again.",
 	  "invalid_auth": "Invalid email or password",
       "cannot_connect": "Failed to connect to server",
       "unknown": "Unknown error"
