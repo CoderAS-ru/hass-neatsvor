@@ -197,9 +197,13 @@ class AsyncMapVisualizer:
             if not realtime_dir.exists():
                 return
 
-            # Get all PNG files, sort by modification time
-            png_files = sorted(realtime_dir.glob("*.png"), key=os.path.getmtime)
-            json_files = sorted(metadata_dir.glob("*.json"), key=os.path.getmtime) if metadata_dir.exists() else []
+            # ✅ ИСПРАВЛЕНО: используем asyncio.to_thread для блокирующих операций
+            png_files = await asyncio.to_thread(
+                lambda: sorted(realtime_dir.glob("*.png"), key=os.path.getmtime)
+            )
+            json_files = await asyncio.to_thread(
+                lambda: sorted(metadata_dir.glob("*.json"), key=os.path.getmtime)
+            ) if metadata_dir.exists() else []
 
             # Create mapping of PNG -> JSON
             png_to_json = {}
@@ -223,14 +227,14 @@ class AsyncMapVisualizer:
 
                 # Delete old PNGs
                 for png in png_files[:-keep_last]:
-                    png.unlink()
+                    await asyncio.to_thread(png.unlink)
                     _LOGGER.debug("Deleted old map: %s", png.name)
 
                     # Delete corresponding JSON if exists
                     if png in png_to_json:
                         json_path = png_to_json[png]
                         if json_path.exists():
-                            json_path.unlink()
+                            await asyncio.to_thread(json_path.unlink)
                             _LOGGER.debug("Deleted metadata: %s", json_path.name)
 
                 # Also check JSON files without corresponding PNGs
@@ -245,39 +249,39 @@ class AsyncMapVisualizer:
 
                         if not has_png and json_path not in png_to_json.values():
                             # Check file age
-                            file_age = time.time() - os.path.getmtime(json_path)
+                            file_age = await asyncio.to_thread(time.time) - await asyncio.to_thread(os.path.getmtime, json_path)
                             if file_age > 3600:  # Older than hour
-                                json_path.unlink()
+                                await asyncio.to_thread(json_path.unlink)
                                 _LOGGER.debug("Deleted old metadata without map: %s", json_path.name)
 
                 _LOGGER.info("Real-time cleanup: deleted %s PNGs and corresponding JSON, kept %s", len(png_files[:-keep_last]), keep_last)
 
             # Additional cleanup of very old files (over 24 hours)
-            self._cleanup_old_files(realtime_dir, metadata_dir, max_age_hours=24)
+            await self._cleanup_old_files_async(realtime_dir, metadata_dir, max_age_hours=24)
 
         except Exception as e:
             _LOGGER.error("Error cleaning realtime maps: %s", e)
 
-    def _cleanup_old_files(self, realtime_dir: Path, metadata_dir: Path, max_age_hours: int = 24):
-        """Delete files older than max_age_h hours."""
+    async def _cleanup_old_files_async(self, realtime_dir: Path, metadata_dir: Path, max_age_hours: int = 24):
+        """Delete files older than max_age_h hours (async-safe version)."""
         try:
             import time
-            current_time = time.time()
+            current_time = await asyncio.to_thread(time.time)
             max_age_seconds = max_age_hours * 3600
 
             # Clean PNGs
             for png in realtime_dir.glob("*.png"):
-                file_age = current_time - os.path.getmtime(png)
+                file_age = current_time - await asyncio.to_thread(os.path.getmtime, png)
                 if file_age > max_age_seconds:
-                    png.unlink()
+                    await asyncio.to_thread(png.unlink)
                     _LOGGER.debug("Deleted very old map (>%sh): %s", max_age_hours, png.name)
 
             # Clean JSONs
             if metadata_dir.exists():
                 for json_path in metadata_dir.glob("*.json"):
-                    file_age = current_time - os.path.getmtime(json_path)
+                    file_age = current_time - await asyncio.to_thread(os.path.getmtime, json_path)
                     if file_age > max_age_seconds:
-                        json_path.unlink()
+                        await asyncio.to_thread(json_path.unlink)
                         _LOGGER.debug("Deleted very old metadata (>%sh): %s", max_age_hours, json_path.name)
 
         except Exception as e:
