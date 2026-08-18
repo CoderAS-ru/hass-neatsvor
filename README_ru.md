@@ -220,6 +220,7 @@ variables:
 ## Поддерживаемые устройства
 ### Neatsvor 
   - [S700](https://neatsvor.ru/product/productDetail?spuId=28)
+  - [N7](https://neatsvor.ru/product/productDetail?spuId=40)
 
 ### BlackVision
   - Другие устройства платформы BlackVision (тестируются)
