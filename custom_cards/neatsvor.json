@@ -120,7 +120,7 @@
             "icon_mapping": {
                 "sweep": "mdi:broom",
                 "mop": "mdi:spray",
-                "sweepMop": "mdi:vacuum-outline"
+                "sweep_mop": "mdi:vacuum-outline"
             },
             "tap_action": {
                 "action": "call-service",
