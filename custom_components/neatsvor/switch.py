@@ -48,21 +48,19 @@ class NeatsvorAutoRestoreSwitch(CoordinatorEntity, SwitchEntity):
         return False
 
     async def async_turn_on(self, **kwargs):
-        """Turn the switch on."""
         self._attr_is_on = True
-        self._save_state()
+        await self._save_state()
         self.async_write_ha_state()
         _LOGGER.info("Auto-restore reference map ENABLED")
 
     async def async_turn_off(self, **kwargs):
-        """Turn the switch off."""
         self._attr_is_on = False
-        self._save_state()
+        await self._save_state()
         self.async_write_ha_state()
         _LOGGER.info("Auto-restore reference map DISABLED")
 
-    def _save_state(self):
+    async def _save_state(self):
         """Save state to storage."""
         if hasattr(self.coordinator, 'select_storage'):
             value = "on" if self._attr_is_on else "off"
-            self.coordinator.select_storage.async_set('auto_restore', value)
+            await self.coordinator.select_storage.async_set('auto_restore', value)

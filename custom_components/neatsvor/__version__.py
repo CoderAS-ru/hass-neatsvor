@@ -1,4 +1,4 @@
 """Version information for Neatsvor integration."""
 
-__version__ = "2.0.3"
-__release_date__ = "2026-08-18"
+__version__ = "2.0.4"
+__release_date__ = "2026-08-19"
