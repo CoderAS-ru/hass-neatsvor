@@ -6,6 +6,8 @@ from typing import Dict, List, Optional
 from dataclasses import dataclass
 from pathlib import Path
 
+from custom_components.neatsvor.liboshome.rest.async_client import NeatsvorRestError
+
 _LOGGER = logging.getLogger(__name__)
 
 
