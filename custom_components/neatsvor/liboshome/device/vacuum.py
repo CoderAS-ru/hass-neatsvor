@@ -12,6 +12,7 @@ import sys
 from typing import Dict, Any, Optional, List, Callable, Awaitable, Tuple
 from dataclasses import dataclass
 from pathlib import Path
+from datetime import datetime
 
 import aiohttp
 import aiofiles
@@ -27,7 +28,6 @@ from custom_components.neatsvor.liboshome.map.async_visualizer import AsyncMapVi
 from custom_components.neatsvor.liboshome.map.cloud_map_manager import CloudMapManager
 from custom_components.neatsvor.liboshome.map.clean_history_manager import CleanHistoryManager
 from custom_components.neatsvor.liboshome.map.map_decoder import MapDecoder
-from custom_components.neatsvor.liboshome.map.map_processor import get_map_processor
 from custom_components.neatsvor.liboshome.protobuf import sdk_com_pb2 as bvsdk
 
 _LOGGER = logging.getLogger(__name__)
@@ -518,16 +518,17 @@ class NeatsvorVacuum:
             from custom_components.neatsvor.liboshome.protobuf import sweeper_any_pb2
             from google.protobuf import any_pb2
 
-            map_reuse = sweeper_any_pb2.MapReuse()
-            map_reuse.map_id = 0  # 0 for current map
-            map_reuse.operation = 1  # 1 = save
+            # Используем UseMap с map_id = 0 (текущая карта)
+            # Это соответствует "save as reference"
+            use_map = sweeper_any_pb2.UseMap()
+            use_map.map_id = 0
+            use_map.url = ""
+            use_map.md5 = ""
 
-            # Pack into Any
             body_any = any_pb2.Any()
-            body_any.Pack(map_reuse, "type.googleapis.com/sweeper.MapReuse")
+            body_any.Pack(use_map, "type.googleapis.com/sweeper.UseMap")
 
             await self.send_raw_command(30, body_any.SerializeToString())
-
             _LOGGER.info("Reference map save command sent")
             return True
 
@@ -538,9 +539,9 @@ class NeatsvorVacuum:
     async def restore_reference_map(self, map_id: int, map_url: str = "", map_md5: str = "") -> bool:
         """
         Restore reference map using DP 30 (map_reuse).
-
+        
         Args:
-            map_id: Device map ID
+            map_id: Device map ID (from cloud map)
             map_url: URL to download map (optional)
             map_md5: MD5 checksum (optional)
         """
@@ -549,6 +550,7 @@ class NeatsvorVacuum:
             from custom_components.neatsvor.liboshome.protobuf import sweeper_any_pb2
             from google.protobuf import any_pb2
 
+            # Используем UseMap с ID сохранённой карты
             use_map = sweeper_any_pb2.UseMap()
             use_map.map_id = map_id
             if map_url:
@@ -567,6 +569,18 @@ class NeatsvorVacuum:
 
         except Exception as e:
             _LOGGER.error("Error restoring reference map: %s", e)
+            return False
+
+    async def load_reference_map(self) -> bool:
+        """Load reference map from device."""
+        _LOGGER.info("Loading reference map from device")
+        try:
+            # Запрашиваем карту — она загрузится через MQTT
+            await self.request_map()
+            _LOGGER.info("Reference map load request sent")
+            return True
+        except Exception as e:
+            _LOGGER.error("Error loading reference map: %s", e)
             return False
 
     async def use_cloud_map(self, map_id: int, map_url: str, map_md5: str) -> bool:
@@ -770,10 +784,6 @@ class NeatsvorVacuum:
         dp_ids = [3, 4, 5, 1, 2, 15, 6, 7, 8, 9, 10, 16, 24, 37, 36, 34, 38, 40, 49, 47, 25, 33, 35]
         _LOGGER.info("Requesting all data: %s", dp_ids)
         return await self.request_data(dp_ids)
-
-    async def request_map(self) -> bool:
-        """Request map (DP 4)."""
-        return await self.request_data([4])
 
     # ------------------------------------------------------------------
     # Incoming data handlers
