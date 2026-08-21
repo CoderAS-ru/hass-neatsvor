@@ -522,11 +522,13 @@ class NeatsvorSensor(CoordinatorEntity, SensorEntity):
 class NeatsvorMapSensor(CoordinatorEntity, SensorEntity):
     """Sensor containing all map data as attributes."""
 
+    _attr_has_entity_name = True          
+    _attr_translation_key = "map_data"   
+
     def __init__(self, coordinator):
         """Initialize."""
         super().__init__(coordinator)
         self._attr_unique_id = "neatsvor_map_data"
-        #self._attr_name = "Map Data"
         self._attr_device_info = coordinator.device_info
         self._attr_icon = "mdi:map"
         self._attr_native_value = "0 rooms"
@@ -1622,6 +1624,7 @@ class NeatsvorCleanHistorySensor(CoordinatorEntity, SensorEntity):
         self._download_tasks = {}
         self._last_update = datetime.now()
         self._initial_load_done = False
+        self._previous_status = ""
 
         _LOGGER.debug("CleanHistorySensor initialized")
 
@@ -1637,18 +1640,23 @@ class NeatsvorCleanHistorySensor(CoordinatorEntity, SensorEntity):
 
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
-        # Проверяем, не завершилась ли уборка
         if self.coordinator and self.coordinator.data:
-            status_text = self.coordinator.data.get("status_text", "").lower()
-            # Если статус "возврат на базу" или "зарядка" (после уборки)
-            if "returning" in status_text or "возврат" in status_text:
-                _LOGGER.info("Cleaning completed, loading latest history map...")
+            # Получаем текущий и предыдущий статусы
+            current_status = self.coordinator.data.get("status_text", "").lower()
+            previous_status = getattr(self, '_previous_status', "").lower()
+            
+            # Сохраняем текущий статус для следующего сравнения
+            self._previous_status = current_status
+            
+            # Проверяем переход: был "возврат", стал "зарядка"
+            if ("returning" in previous_status or "возврат" in previous_status) and \
+               ("charging" in current_status or "зарядк" in current_status):
+                _LOGGER.info("Transition from returning to charging detected, loading latest history map...")
                 self.hass.async_create_task(self._auto_load_latest_map())
             else:
                 # Стандартное обновление
                 self.hass.async_create_task(self._load_history())
         else:
-            # Стандартное обновление
             self.hass.async_create_task(self._load_history())
 
     async def _load_history(self):

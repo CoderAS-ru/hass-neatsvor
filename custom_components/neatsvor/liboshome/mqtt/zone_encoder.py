@@ -1,6 +1,7 @@
 """Zone cleaning encoder for MQTT."""
 
 import logging
+from typing import List, Tuple
 from google.protobuf import any_pb2
 
 _LOGGER = logging.getLogger(__name__)
@@ -78,31 +79,27 @@ async def encode_zone_clean_command(encoder, x1: int, y1: int, x2: int, y2: int,
         raise
         
 async def encode_multiple_zones_command(encoder, zones: List[Tuple[int, int, int, int, int]]) -> bytes:
-    """
-    Create multiple zones cleaning command.
-
-    Args:
-        encoder: NeatsvorEncoder instance
-        zones: List of zones, each = (x1, y1, x2, y2, repeats)
-
-    Returns:
-        GZip-compressed command bytes
-    """
+    """Create multiple zones cleaning command."""
     try:
         from custom_components.neatsvor.liboshome.protobuf import sweeper_com_pb2
         from google.protobuf import any_pb2
 
         zone_clean = sweeper_com_pb2.ZoneClean()
-        zone_clean.times = 1  # Будет переопределено для каждой зоны
+        # ⚠️ ВАЖНО: repeats не может быть разным для разных зон
+        # Используем repeats из первой зоны
+        if zones:
+            zone_clean.times = zones[0][4] if len(zones[0]) > 4 else 1
 
-        for x1, y1, x2, y2, repeats in zones:
+        for zone in zones:
+            x1, y1, x2, y2 = zone[:4]
+            repeats = zone[4] if len(zone) > 4 else 1
+
             # Масштабируем
             scaled_x1 = int(round(x1 * 10))
             scaled_y1 = int(round(y1 * 10))
             scaled_x2 = int(round(x2 * 10))
             scaled_y2 = int(round(y2 * 10))
 
-            # Приводим к правильному порядку
             final_x1 = min(scaled_x1, scaled_x2)
             final_y1 = min(scaled_y1, scaled_y2)
             final_x2 = max(scaled_x1, scaled_x2)
@@ -110,7 +107,6 @@ async def encode_multiple_zones_command(encoder, zones: List[Tuple[int, int, int
 
             polygon = zone_clean.zones.add()
             polygon.number = 4
-            polygon.repeats = repeats
 
             # Точки по часовой стрелке
             p1 = polygon.points.add()
@@ -132,8 +128,7 @@ async def encode_multiple_zones_command(encoder, zones: List[Tuple[int, int, int
         body_any = any_pb2.Any()
         body_any.Pack(zone_clean, "type.googleapis.com/sweeper.ZoneClean")
 
-        command = encoder.create_dp_command(32, body_any.SerializeToString())
-        return command
+        return encoder.create_dp_command(32, body_any.SerializeToString())
 
     except Exception as e:
         _LOGGER.error("Failed to create multiple zones command: %s", e, exc_info=True)

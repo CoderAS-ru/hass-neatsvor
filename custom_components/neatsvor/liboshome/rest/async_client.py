@@ -3,6 +3,7 @@ Asynchronous REST client for Neatsvor API.
 Exact copy of neatsvor_rest.py logic, but with async/await.
 """
 
+import asyncio
 import hashlib
 import logging
 from typing import Any, Dict, Optional, List

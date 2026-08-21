@@ -407,7 +407,7 @@ async def _async_register_services(hass: HomeAssistant):
 
                 msg = _get_localized_message(
                     hass, "restored_from_reference", 
-                    "Restored from reference map '{}'\nрџЏ  Rooms: {}\nрџ“Џ Area: {}mВІ",
+                    "Restored from reference map '{}'\n🏠 Rooms: {}\n📏 Area: {}m²",
                     reference_map.get('name'), reference_map.get('room_count'), reference_map.get('area')
                 )
                 hass.bus.async_fire("persistent_notification", {
@@ -456,24 +456,24 @@ async def _async_register_services(hass: HomeAssistant):
                 diff_text = ""
 
                 if reference_map.get('room_count') != selected_map.get('room_count'):
-                    diff_line = f"рџЏ  Room count: {reference_map.get('room_count')} vs {selected_map.get('room_count')}"
+                    diff_line = f"🏠 Room count: {reference_map.get('room_count')} vs {selected_map.get('room_count')}"
                     differences.append(diff_line)
 
                 if abs(reference_map.get('area', 0) - selected_map.get('area', 0)) > 1:
-                    diff_line = f"рџ“Џ Area: {reference_map.get('area')}mВІ vs {selected_map.get('area')}mВІ"
+                    diff_line = f"📏 Area: {reference_map.get('area')}m² vs {selected_map.get('area')}m²"
                     differences.append(diff_line)
 
                 base_msg = _get_localized_message(
                     hass, "comparison_result",
-                    "рџ“Љ Comparison: '{}' vs Reference '{}'\n",
+                    "📊 Comparison: '{}' vs Reference '{}'\n"
                     selected_map.get('name'), reference_map.get('name')
                 )
                 
                 if differences:
                     diff_text = "\n".join(differences)
-                    msg = base_msg + _get_localized_message(hass, "differences_found", "\nвљ пёЏ Differences found:\n{}", diff_text)
+                    msg = base_msg + _get_localized_message(hass, "differences_found", "\n⚠️ Differences found:\n{}", diff_text)
                 else:
-                    msg = base_msg + _get_localized_message(hass, "maps_identical", "\nвњ… Maps are identical!")
+                    msg = base_msg + _get_localized_message(hass, "maps_identical", "\n✅ Maps are identical!")
 
                 if show_details:
                     msg += f"\n\nReference: {reference_map.get('room_count')} rooms, {reference_map.get('area')}mВІ"
@@ -712,9 +712,10 @@ async def _async_register_services(hass: HomeAssistant):
     # NEW: Register the service under the integration's own name
     hass.services.async_register(DOMAIN, "vacuum_clean_zone", async_vacuum_zone_clean)
 
-    # OLD: Register service under the name expected by the map card (Xiaomi Miio)
-    # Commented out to avoid conflicts. Can be uncommented for rollback.
-    hass.services.async_register("xiaomi_miio", "vacuum_clean_zone", async_vacuum_zone_clean)
+    # ОТКЛЮЧЕНО: Регистрация сервиса под именем xiaomi_miio
+    # Это может конфликтовать с официальной интеграцией Xiaomi Miio
+    # Если вам нужна обратная совместимость, используйте neatsvor.vacuum_clean_zone
+    # hass.services.async_register("xiaomi_miio", "vacuum_clean_zone", async_vacuum_zone_clean)
 
     # Subscribe to events
     hass.bus.async_listen("neatsvor_history_map_updated", handle_history_map_updated)
@@ -733,6 +734,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     if unload_ok and entry.entry_id in hass.data[DOMAIN]:
         coordinator = hass.data[DOMAIN][entry.entry_id]
+        if coordinator and hasattr(coordinator, 'vacuum'):
+            await coordinator.vacuum.disconnect()
         hass.data[DOMAIN].pop(entry.entry_id)
 
     _initialized = False

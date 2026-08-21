@@ -14,11 +14,11 @@
     "custom_components.neatsvor"
   ],
   "requirements": [
-    "protobuf>=3.20.0",
+    "protobuf>=6.32.0,<7",
     "Pillow>=9.0.0",
     "numpy>=1.21.0",
     "aiofiles>=22.0.0",
     "aiohttp>=3.8.0"
   ],
-  "version": "2.0.4"
+  "version": "2.1.0"
 }
