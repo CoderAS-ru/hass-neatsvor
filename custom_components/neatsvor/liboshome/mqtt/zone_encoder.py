@@ -12,15 +12,13 @@ COORDINATE_SCALE = 10
 
 async def encode_zone_clean_command(encoder, x1: int, y1: int, x2: int, y2: int,
                                      repeats: int = 1,
-                                     origin_x: int = 0,
-                                     origin_y: int = 0,
                                      map_height: int = None,
                                      resolution_cm: float = 6.0) -> bytes:
     """
-    Create zone cleaning command with origin support.
+    Create zone cleaning command.
     
-    Координаты в ПИКСЕЛЯХ карты (относительные).
-    Origin добавляется к координатам перед отправкой.
+    Координаты уже должны быть в системе координат робота
+    (с учетом origin, обработанные через calculate_zone_coordinates).
     """
     try:
         from custom_components.neatsvor.liboshome.protobuf import sweeper_com_pb2
@@ -31,15 +29,14 @@ async def encode_zone_clean_command(encoder, x1: int, y1: int, x2: int, y2: int,
         scaled_x2 = int(round(x2 * 10))
         scaled_y2 = int(round(y2 * 10))
 
-        # Приводим к правильному порядку
-        final_x1 = min(scaled_x1, scaled_x2) + origin_x
-        final_y1 = min(scaled_y1, scaled_y2) + origin_y
-        final_x2 = max(scaled_x1, scaled_x2) + origin_x
-        final_y2 = max(scaled_y1, scaled_y2) + origin_y
+        # Приводим к правильному порядку (без origin — координаты уже скорректированы)
+        final_x1 = min(scaled_x1, scaled_x2)
+        final_y1 = min(scaled_y1, scaled_y2)
+        final_x2 = max(scaled_x1, scaled_x2)
+        final_y2 = max(scaled_y1, scaled_y2)
 
         _LOGGER.info(
-            "Zone: pixels(%d,%d)-(%d,%d) -> with origin(%d,%d): final(%d,%d)-(%d,%d), repeats=%d",
-            x1, y1, x2, y2, origin_x, origin_y,
+            "Zone: final(%d,%d)-(%d,%d), repeats=%d",
             final_x1, final_y1, final_x2, final_y2, repeats
         )
 

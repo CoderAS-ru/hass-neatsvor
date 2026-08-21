@@ -998,7 +998,7 @@ class NeatsvorVacuum:
             _LOGGER.info("Rooms to clean: %s (IDs: %s)", room_names, room_ids)
 
             body_any = any_pb2.Any()
-            body_any.Pack(room_data, "sweeper.Rooms")
+            body_any.Pack(room_data, "type.googleapis.com/sweeper.Rooms")
 
             serialized = body_any.SerializeToString()
             _LOGGER.debug("RoomAttrs serialized size: %s bytes", len(serialized))
@@ -1026,6 +1026,8 @@ class NeatsvorVacuum:
     async def zone_clean(self, x1: int, y1: int, x2: int, y2: int, repeats: int = 1) -> bool:
         """Clean a specific zone with coordinates."""
         try:
+            from custom_components.neatsvor.liboshome.mqtt.zone_encoder import encode_zone_clean_command
+            
             # Получаем текущую карту для origin
             map_data = self._map_data
             if not map_data:
@@ -1035,13 +1037,16 @@ class NeatsvorVacuum:
             origin_x = map_data.get('origin', {}).get('x', 0)
             origin_y = map_data.get('origin', {}).get('y', 0)
             
-            # Используем общую функцию для пересчета координат
+            # Используем общую функцию для пересчета координат (уже вычитает origin)
             robot_x1, robot_y1, robot_x2, robot_y2 = calculate_zone_coordinates(
                 x1, y1, x2, y2, origin_x, origin_y
             )
             
-            # Отправляем команду с пересчитанными координатами
-            await self.send_zone_clean_command(robot_x1, robot_y1, robot_x2, robot_y2, repeats)
+            # Кодируем команду (НЕ добавляет origin повторно!)
+            command_bytes = await encode_zone_clean_command(self._encoder, robot_x1, robot_y1, robot_x2, robot_y2, repeats)
+            await self._command_sender.publish_command(command_bytes)
+            
+            _LOGGER.info("Zone clean command sent: (%s,%s)-(%s,%s) x%s", robot_x1, robot_y1, robot_x2, robot_y2, repeats)
             return True
             
         except Exception as e:

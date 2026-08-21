@@ -62,14 +62,14 @@ async def _async_setup_selects_later(coordinator, async_add_entities):
     new_entities = []
     device_id = coordinator.device_id
 
-    # Water level (DP 10)
+    # Water level
     water_dp = dp_manager.get_by_code('water_tank')
     if water_dp and water_dp.enum:
         options = [v for k, v in water_dp.enum.items() if k != 0]
         if options:
             new_entities.append(NeatsvorEnumSelect(
                 coordinator,
-                dp_id=10,
+                dp_id=water_dp.id,  # ✅ Используем реальный ID из DP-схемы
                 translation_key="water_level",
                 icon="mdi:water",
                 options=options,
@@ -77,16 +77,16 @@ async def _async_setup_selects_later(coordinator, async_add_entities):
                 localize_func=get_localized_water_level,
                 device_id=device_id,
             ))
-            _LOGGER.info("Added water level: %s", options)
+            _LOGGER.info("Added water level (DP %s): %s", water_dp.id, options)
 
-    # Fan speed (DP 9)
+    # Fan speed
     fan_dp = dp_manager.get_by_code('fan')
     if fan_dp and fan_dp.enum:
         options = [v for k, v in fan_dp.enum.items() if k != 0]
         if options:
             new_entities.append(NeatsvorEnumSelect(
                 coordinator,
-                dp_id=9,
+                dp_id=fan_dp.id,  # ✅ Используем реальный ID из DP-схемы
                 translation_key="fan_speed",
                 icon="mdi:fan",
                 options=options,
@@ -94,9 +94,9 @@ async def _async_setup_selects_later(coordinator, async_add_entities):
                 localize_func=get_localized_fan_speed,
                 device_id=device_id,
             ))
-            _LOGGER.info("Added fan speed: %s", options)
+            _LOGGER.info("Added fan speed (DP %s): %s", fan_dp.id, options)
 
-    # Clean mode (DP 15)
+    # Clean mode
     mode_dp = dp_manager.get_by_code('clean_mode')
     if mode_dp and mode_dp.enum:
         # Оригинальные опции: ['sweep', 'mop', 'sweepMop']
@@ -120,7 +120,7 @@ async def _async_setup_selects_later(coordinator, async_add_entities):
         
         new_entities.append(NeatsvorEnumSelect(
             coordinator,
-            dp_id=15,
+            dp_id=mode_dp.id,  # ✅ Используем реальный ID из DP-схемы
             translation_key="clean_mode",
             icon="mdi:broom",
             options=display_options,
@@ -128,7 +128,7 @@ async def _async_setup_selects_later(coordinator, async_add_entities):
             localize_func=get_localized_clean_mode,
             device_id=device_id,
         ))
-        _LOGGER.info("Added clean mode: %s", display_options)
+        _LOGGER.info("Added clean mode (DP %s): %s", mode_dp.id, display_options)
 
     # Room selection
     room_clean_dp = dp_manager.get_by_code('room_clean')
@@ -246,9 +246,14 @@ class NeatsvorEnumSelect(CoordinatorEntity, SelectEntity):
         if not self.coordinator.data:
             return None
 
-        key_map = {9: "fan_speed", 10: "water_level", 15: "clean_mode"}
+        # Используем динамическое определение ключа по dp_id
+        key_map = {}
+        for code in ['fan_speed', 'water_level', 'clean_mode']:
+            dp = self.coordinator.vacuum.dp_manager.get_by_code(code)
+            if dp:
+                key_map[dp.id] = code
+        
         value = self.coordinator.data.get(key_map.get(self._dp_id))
-
         if value and value in self._value_map:
             return value
         return None
