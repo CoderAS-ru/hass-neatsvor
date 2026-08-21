@@ -85,6 +85,24 @@
 
 > **Примечание**: Для использования нескольких приложений одновременно потребуется создать отдельные экземпляры интеграции.
 
+## ⚠️ !!! Важное обновление для версии v2.1.0 и выше !!!
+
+В версии v2.1.0 была полностью переработана архитектура интеграции для поддержки нескольких устройств. Это привело к изменению **формата `entity_id` для ВСЕХ сущностей**.
+
+**Новый формат:** `sensor.neatsvor_<device_id>_status` (вместо `sensor.s700_status`).
+
+**Что это значит для вас:**
+
+1.  **После обновления** ваши старые сущности (например, `sensor.s700_status`) станут недоступными.
+2.  **Не пугайтесь!** Вам нужно просто удалить их, чтобы Home Assistant переключился на новые.
+3.  Как это сделать:
+    *   Зайдите в **Настройки → Устройства и сервисы → Сущности**.
+    *   Найдите все сущности Neatsvor с пометкой "недоступно" (обычно они начинаются с `sensor.s700_*`, `select.s700_*` и т.д.).
+    *   Удалите их.
+4.  **Обновите ваши автоматизации и карточки**, заменив старые `entity_id` на новые (`sensor.neatsvor_<device_id>_status` и т.д.).
+
+Если вы используете несколько устройств, у каждого будет свой уникальный `<device_id>`, что позволит интеграции различать их.
+
 ## Использование
 
 ### Зональная уборка
@@ -95,11 +113,11 @@
 type: custom:xiaomi-vacuum-map-card
 entity: vacuum.neatsvor_vacuum
 map_source:
-  camera: camera.neatsvor_live_map
+  camera: camera.neatsvor_<device_id>_live_camera
 calibration_source:
   identity: true
 zones:
-  service: neatsvor.zone_clean
+  service: neatsvor.vacuum_clean_zone
   service_data:
     entity_id: vacuum.neatsvor_vacuum
     zones: "[[x1, y1, x2, y2, 1]]"
@@ -133,7 +151,7 @@ sequence:
       use_preset: true
       room: Кухня
     target:
-      entity_id: vacuum.s700_smart_vacuum
+      entity_id: vacuum.neatsvor_<device_id>_vacuum
 alias: Уборка кухни
 description: Запустить уборку на кухне
 ```
@@ -159,7 +177,7 @@ yandex_smart_home:
 
 | Сервис | Описание |
 |--------|----------|
-| `neatsvor.zone_clean` | Зональная уборка |
+| `neatsvor.vacuum_clean_zone` | Зональная уборка |
 | `neatsvor.clean_room_with_preset` | Уборка комнаты с использованием предварительных настроек |
 | `neatsvor.save_reference_map` | Сохранить текущую карту как эталон |
 | `neatsvor.restore_reference_map` | Восстановить карту из эталона |
@@ -191,12 +209,12 @@ yandex_smart_home:
 
 Убедитесь, что у вас есть следующие сенсоры из интеграции Neatsvor:
 
-- `sensor.ВАША_МОДЕЛЬ_status` — текущий статус пылесоса.
-- `sensor.ВАША_МОДЕЛЬ_clean_history` — записи истории уборок.
-- `sensor.ВАША_МОДЕЛЬ` — данные карты с атрибутом `map_path`.
-- `sensor.ВАША_МОДЕЛЬ_current_clean_time` — текущее время уборки.
-- `sensor.ВАША_МОДЕЛЬ_current_clean_area` — текущая площадь уборки.
-- `sensor.ВАША_МОДЕЛЬ_battery` — уровень заряда батареи.
+- `sensor.neatsvor_<device_id>_status` — текущий статус пылесоса.
+- `sensor.neatsvor_<device_id>_clean_history` — записи истории уборок.
+- `sensor.neatsvor_<device_id>` — данные карты с атрибутом `map_path`.
+- `sensor.neatsvor_<device_id>_current_clean_time` — текущее время уборки.
+- `sensor.neatsvor_<device_id>_current_clean_area` — текущая площадь уборки.
+- `sensor.neatsvor_<device_id>_battery` — уровень заряда батареи.
 
 ### Настройка
 
@@ -209,12 +227,12 @@ variables:
   mobile_notify_service: "notify.mobile_app_ВАШЕ_УСТРОЙСТВО" # Ваш сервис уведомлений
   
   # ========== ИМЕНА СУЩНОСТЕЙ (ЗАМЕНИТЕ НА СВОИ) ==========
-  vacuum_status_entity: "sensor.ВАША_МОДЕЛЬ_status"
-  vacuum_clean_history: "sensor.ВАША_МОДЕЛЬ_clean_history"
-  vacuum_map_data: "sensor.ВАША_МОДЕЛЬ"
-  vacuum_clean_time: "sensor.ВАША_МОДЕЛЬ_current_clean_time"
-  vacuum_clean_area: "sensor.ВАША_МОДЕЛЬ_current_clean_area"
-  vacuum_battery: "sensor.ВАША_МОДЕЛЬ_battery"
+  vacuum_status_entity: "sensor.neatsvor_<device_id>_status"
+  vacuum_clean_history: "sensor.neatsvor_<device_id>_clean_history"
+  vacuum_map_data: "sensor.neatsvor_<device_id>"
+  vacuum_clean_time: "sensor.neatsvor_<device_id>_current_clean_time"
+  vacuum_clean_area: "sensor.neatsvor_<device_id>_current_clean_area"
+  vacuum_battery: "sensor.neatsvor_<device_id>_battery"
 ```
 
 ## Поддерживаемые устройства
