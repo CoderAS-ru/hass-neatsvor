@@ -86,6 +86,24 @@ If you have devices in different apps:
 
 > **Note:** Using multiple apps simultaneously requires creating separate integration instances.
 
+## ⚠️ !!! Important Update for v2.1.0 and above !!!
+
+In version v2.1.0, the integration's architecture was completely redesigned to support multiple devices. This resulted in a change to the **`entity_id` format for ALL entities**.
+
+**New format:** `sensor.neatsvor_<device_id>_status` (instead of `sensor.s700_status`).
+
+**What this means for you:**
+
+1.  **After the update**, your old entities (e.g., `sensor.s700_status`) will become unavailable.
+2.  **Don't panic!** You just need to delete them so Home Assistant can switch to the new ones.
+3.  How to do it:
+    *   Go to **Settings → Devices & Services → Entities**.
+    *   Find all Neatsvor entities marked as "unavailable" (usually starting with `sensor.s700_*`, `select.s700_*`, etc.).
+    *   Delete them.
+4.  **Update your automations and cards**, replacing old `entity_id`s with new ones (`sensor.neatsvor_<device_id>_status`, etc.).
+
+If you use multiple devices, each will have its own unique `<device_id>`, allowing the integration to distinguish them.
+
 ## Usage
 
 ### Zone Cleaning
@@ -95,11 +113,11 @@ To use zone cleaning, you need to install `lovelace-xiaomi-vacuum-map-card`:
 type: custom:xiaomi-vacuum-map-card
 entity: vacuum.neatsvor_vacuum
 map_source:
-  camera: camera.neatsvor_live_map
+  camera: camera.neatsvor_<device_id>_live_camera
 calibration_source:
   identity: true
 zones:
-  service: neatsvor.zone_clean
+  service: neatsvor.vacuum_clean_zone
   service_data:
     entity_id: vacuum.neatsvor_vacuum
     zones: "[[x1, y1, x2, y2, 1]]"
@@ -127,7 +145,7 @@ sequence:
       use_preset: true
       room: Kitchen
     target:
-      entity_id: vacuum.s700_smart_vacuum
+      entity_id: vacuum.neatsvor_<device_id>_vacuum
 alias: Clean Kitchen
 description: Start cleaning the kitchen
 ```
@@ -141,7 +159,7 @@ After this, you can use voice commands in the "Smart Home with Alice" app:
 
 | Service |	Description |
 |---------|-------------|
-| `neatsvor.zone_clean` |	Start zone cleaning |
+| `neatsvor.vacuum_clean_zone` |	Start zone cleaning |
 | `neatsvor.clean_room_with_preset` |	Start room cleaning using saved presets |
 | `neatsvor.set_reference_map` |	Save the current map as a reference |
 | `neatsvor.restore_reference_map` |	Restore room configuration from the reference map |
@@ -173,12 +191,12 @@ This example automation sends you notifications about your vacuum's status, incl
 
 Make sure you have the following sensors from the Neatsvor integration:
 
-- `sensor.YOUR_MODEL_status` — current vacuum status.
-- `sensor.YOUR_MODEL_clean_history` — cleaning history records.
-- `sensor.YOUR_MODEL` — map data with the `map_path` attribute.
-- `sensor.YOUR_MODEL_current_clean_time` — current cleaning time.
-- `sensor.YOUR_MODEL_current_clean_area` — current cleaning area.
-- `sensor.YOUR_MODEL_battery` — battery level.
+- `sensor.neatsvor_<device_id>_status` — current vacuum status.
+- `sensor.neatsvor_<device_id>_clean_history` — cleaning history records.
+- `sensor.neatsvor_<device_id>` — map data with the `map_path` attribute.
+- `sensor.neatsvor_<device_id>_current_clean_time` — current cleaning time.
+- `sensor.neatsvor_<device_id>_current_clean_area` — current cleaning area.
+- `sensor.neatsvor_<device_id>_battery` — battery level.
 
 ### Customization
 
@@ -191,12 +209,12 @@ variables:
   mobile_notify_service: "notify.mobile_app_YOUR_DEVICE" # Your mobile notification service
   
   # ========== ENTITY NAMES (REPLACE WITH YOUR OWN) ==========
-  vacuum_status_entity: "sensor.YOUR_MODEL_status"
-  vacuum_clean_history: "sensor.YOUR_MODEL_clean_history"
-  vacuum_map_data: "sensor.YOUR_MODEL"
-  vacuum_clean_time: "sensor.YOUR_MODEL_current_clean_time"
-  vacuum_clean_area: "sensor.YOUR_MODEL_current_clean_area"
-  vacuum_battery: "sensor.YOUR_MODEL_battery"
+  vacuum_status_entity: "sensor.neatsvor_<device_id>_status"
+  vacuum_clean_history: "sensor.neatsvor_<device_id>_clean_history"
+  vacuum_map_data: "sensor.neatsvor_<device_id>"
+  vacuum_clean_time: "sensor.neatsvor_<device_id>_current_clean_time"
+  vacuum_clean_area: "sensor.neatsvor_<device_id>_current_clean_area"
+  vacuum_battery: "sensor.neatsvor_<device_id>_battery"
 ```
 
 ## Supported Devices
