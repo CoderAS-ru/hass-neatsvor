@@ -1,4 +1,3 @@
-
 """Neatsvor integration for Home Assistant."""
 
 import logging
