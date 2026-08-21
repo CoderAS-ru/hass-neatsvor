@@ -1,4 +1,5 @@
-﻿"""Neatsvor integration for Home Assistant."""
+
+"""Neatsvor integration for Home Assistant."""
 
 import logging
 import asyncio
