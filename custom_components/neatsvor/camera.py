@@ -1,0 +1,545 @@
+"""Camera platform for Neatsvor."""
+
+import logging
+import asyncio
+from pathlib import Path
+from datetime import datetime
+
+from homeassistant.components.camera import Camera
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
+
+from custom_components.neatsvor.liboshome.map.map_cache import get_map_cache
+
+from .const import DOMAIN
+
+_LOGGER = logging.getLogger(__name__)
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Set up Neatsvor cameras."""
+    coordinator = hass.data[DOMAIN][entry.entry_id]['coordinator']
+
+    entities = []
+
+    # Live map camera
+    entities.append(NeatsvorLiveCamera(coordinator))
+    _LOGGER.info("Added live camera")
+
+    # Cloud map camera
+    if hasattr(coordinator.vacuum, 'cloud_maps'):
+        cloud_camera = NeatsvorCloudMapCamera(coordinator)
+        entities.append(cloud_camera)
+        coordinator.cloud_map_camera = cloud_camera
+        _LOGGER.info("Added cloud map camera")
+
+    # Clean history camera
+    entities.append(NeatsvorCleanHistoryCamera(coordinator))
+    _LOGGER.info("Added clean history camera")
+
+    async_add_entities(entities)
+
+
+class NeatsvorLiveCamera(CoordinatorEntity, Camera):
+    _attr_has_entity_name = True
+    _attr_translation_key = "live_camera"
+
+    def __init__(self, coordinator):
+        super().__init__(coordinator)
+        Camera.__init__(self)
+        device_id = coordinator.device_id
+        self._attr_unique_id = f"neatsvor_{device_id}_live_camera"
+        self._attr_device_info = coordinator.device_info
+        self._attr_icon = "mdi:map"
+        self._attr_frame_interval = 1.0
+
+        self._last_image = None
+        self._last_update = None
+        self._map_count = 0
+        self._initial_image_loaded = False
+        self._image_ready = asyncio.Event()
+
+        if coordinator.vacuum:
+            coordinator.vacuum.on_map(self._async_handle_map)
+            _LOGGER.debug("Camera subscribed to map updates")
+
+    async def async_added_to_hass(self):
+        """When entity is added to hass."""
+        await super().async_added_to_hass()
+        _LOGGER.info("Live camera added to hass, requesting map...")
+        
+        # Принудительно запрашиваем карту после добавления в hass
+        await self._request_map_with_retry()
+
+    async def _request_map_with_retry(self, retry_count=5):
+        """Request map with retry."""
+        for attempt in range(retry_count):
+            if self.coordinator and self.coordinator.vacuum:
+                _LOGGER.info("Requesting map (attempt %s/%s)", attempt + 1, retry_count)
+                await self.coordinator.vacuum.request_map()
+                
+                # Ждём ответа
+                try:
+                    await asyncio.wait_for(self._image_ready.wait(), timeout=10.0)
+                    _LOGGER.info("Map received successfully!")
+                    return
+                except asyncio.TimeoutError:
+                    _LOGGER.warning("Timeout waiting for map, retrying...")
+                    self._image_ready.clear()
+                    await asyncio.sleep(2)
+            else:
+                await asyncio.sleep(2)
+        
+        _LOGGER.error("Failed to get map after %s attempts", retry_count)
+
+    async def _async_handle_map(self, map_data: dict):
+        """Handle new map data."""
+        try:
+            self._map_count += 1
+            _LOGGER.debug("Received map #%s: %sx%s", 
+                         self._map_count, 
+                         map_data.get('width', 0), 
+                         map_data.get('height', 0))
+
+            # ✅ НЕ создаём новый файл, а читаем последний сохранённый
+            if self.coordinator.vacuum.visualizer:
+                realtime_dir = Path("/config/www/neatsvor/maps/realtime")
+                if realtime_dir.exists():
+                    # Ищем последний PNG файл (по времени модификации)
+                    png_files = await asyncio.to_thread(lambda: list(realtime_dir.glob("*.png")))
+                    if png_files:
+                        latest_file = max(png_files, key=lambda f: f.stat().st_mtime)
+                        filename = str(latest_file)
+                        
+                        if filename and Path(filename).exists():
+                            import aiofiles
+                            async with aiofiles.open(filename, 'rb') as f:
+                                self._last_image = await f.read()
+                                self._initial_image_loaded = True
+                                self._image_ready.set()
+
+                            self._last_update = datetime.now()
+                            self.async_write_ha_state()
+                            _LOGGER.info("Camera updated with map #%s, reading from: %s", 
+                                        self._map_count, latest_file.name)
+
+            # Периодически чистим старые карты
+            if self._map_count % 10 == 0:
+                await self.coordinator.vacuum.visualizer.cleanup_realtime_maps(keep_last=10)
+
+        except Exception as e:
+            _LOGGER.error("Error processing map: %s", e, exc_info=True)
+
+    async def async_camera_image(self, width=None, height=None):
+        """Return camera image."""
+        # Если изображения ещё нет, ждём его появления
+        if not self._initial_image_loaded:
+            try:
+                await asyncio.wait_for(self._image_ready.wait(), timeout=30.0)
+            except asyncio.TimeoutError:
+                _LOGGER.warning("Timeout waiting for initial map image")
+                return None
+        
+        return self._last_image
+
+    @property
+    def available(self) -> bool:
+        """Return if camera is available."""
+        return self._last_image is not None
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        """Return additional attributes."""
+        return {
+            "last_update": self._last_update.isoformat() if self._last_update else None,
+            "map_count": self._map_count,
+            "image_size": len(self._last_image) if self._last_image else 0,
+            "image_ready": self._initial_image_loaded
+        }
+
+
+class NeatsvorCloudMapCamera(CoordinatorEntity, Camera):
+    _attr_has_entity_name = True
+    _attr_translation_key = "cloud_map_camera"
+
+    def __init__(self, coordinator):
+        super().__init__(coordinator)
+        Camera.__init__(self)
+        device_id = coordinator.device_id
+        self._attr_unique_id = f"neatsvor_{device_id}_cloud_map_camera"
+        self._attr_device_info = coordinator.device_info
+        self._attr_icon = "mdi:cloud-outline"
+        self._attr_frame_interval = 0.5
+
+        self._current_image = None
+        self._current_map_id = None
+        self._next_image = None
+        self._next_map_id = None
+        self._image_timestamp = 0
+        self._cloud_maps_ready = False
+        self._map_path = None
+        self._last_update = datetime.now()
+        self._updating = False
+        self._last_valid_image = None  # Последнее валидное изображение
+        
+        self._pending_image = None
+        self._pending_map_id = None
+
+        _LOGGER.debug("CloudMapCamera initialized")
+        coordinator.cloud_map_camera = self
+
+    async def async_added_to_hass(self) -> None:
+        """When entity is added to hass."""
+        await super().async_added_to_hass()
+        _LOGGER.debug("CloudMapCamera added to hass")
+
+        # Проверяем отложенное изображение
+        if self._pending_image and self._pending_map_id:
+            _LOGGER.info("Applying pending image for map %s", self._pending_map_id)
+            self._current_image = self._pending_image
+            self._current_map_id = self._pending_map_id
+            self._last_update = datetime.now()
+            self.async_write_ha_state()
+            self._pending_image = None
+            self._pending_map_id = None
+
+        self.async_on_remove(
+            self.coordinator.async_add_listener(self._handle_coordinator_update)
+        )
+
+        asyncio.create_task(self._wait_for_cloud_maps())
+
+    async def _wait_for_cloud_maps(self):
+        """Wait for cloud_maps_sensor to be available."""
+        for i in range(30):
+            if hasattr(self.coordinator, 'cloud_maps_sensor') and self.coordinator.cloud_maps_sensor:
+                self._cloud_maps_ready = True
+                _LOGGER.debug("Cloud maps sensor is now available")
+                await self.async_update_image()
+                break
+            await asyncio.sleep(1)
+        else:
+            _LOGGER.warning("Cloud maps sensor not available after 30 seconds")
+
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
+        if not self._cloud_maps_ready:
+            return
+
+        if not hasattr(self.coordinator, 'cloud_maps_sensor'):
+            return
+
+        sensor = self.coordinator.cloud_maps_sensor
+        if not sensor:
+            return
+
+        new_selected_id = sensor.selected_map_id
+        
+        if (new_selected_id is not None and 
+            new_selected_id != self._current_map_id and
+            not self._updating):
+            
+            _LOGGER.info("Map changed from %s to %s", self._current_map_id, new_selected_id)
+            self._updating = True
+            self.hass.async_create_task(self._async_safe_update_image())
+            
+    async def _async_safe_update_image(self):
+        """Safe image update with flag reset."""
+        try:
+            await self.async_update_image()
+        finally:
+            self._updating = False
+
+    @property
+    def entity_picture(self) -> str | None:
+        """Return URL of image for frontend with cache busting."""
+        url = super().entity_picture
+        if self._current_image and self._last_update:
+            timestamp = int(self._last_update.timestamp())
+            if url:
+                if '?' in url:
+                    return f"{url}&t={timestamp}"
+                else:
+                    return f"{url}?t={timestamp}"
+        return url
+
+    def prefetch_image(self, map_id: int, image_bytes: bytes):
+        """Prefetch image for faster switching."""
+        self._next_image = image_bytes
+        self._next_map_id = map_id
+        _LOGGER.debug("Prefetched image for map %s", map_id)
+
+    async def async_update_image(self):
+        """Update the camera image."""
+        _LOGGER.debug("CloudMapCamera.async_update_image() called")
+
+        if self.hass is None:
+            _LOGGER.debug("Camera not yet initialized, skipping")
+            return
+
+        if not self._cloud_maps_ready:
+            return
+
+        if not hasattr(self.coordinator, 'cloud_maps_sensor') or not self.coordinator.cloud_maps_sensor:
+            return
+
+        sensor = self.coordinator.cloud_maps_sensor
+        selected_id = sensor.selected_map_id
+
+        if not selected_id:
+            _LOGGER.debug("No map selected")
+            return
+
+        # Получаем CloudMapInfo объект из менеджера
+        map_info = self.coordinator.vacuum.cloud_maps.get_map_by_id(selected_id)
+        if not map_info:
+            _LOGGER.warning("Map info not found for ID %s", selected_id)
+            return
+
+        # Проверяем и генерируем PNG если нужно
+        png_path = await self.coordinator.vacuum.cloud_maps.ensure_png_exists(map_info)
+        if png_path:
+            _LOGGER.info("Loading image for map %s from: %s", selected_id, png_path)
+            await self._async_load_image(png_path, selected_id)
+        else:
+            _LOGGER.debug("PNG not ready yet for map %s (generating in background)", selected_id)
+
+    async def _async_load_image(self, png_path: str, map_id: int) -> None:
+        """Load image from disk - simple and fast."""
+        try:
+            path = Path(png_path)
+            if not path.exists():
+                _LOGGER.warning("PNG not found for map %s: %s", map_id, png_path)
+                return
+            
+            import aiofiles
+            async with aiofiles.open(path, 'rb') as f:
+                image_bytes = await f.read()
+            
+            # Обновляем изображение
+            self._current_image = image_bytes
+            self._current_map_id = map_id
+            self._last_valid_image = image_bytes  # Сохраняем как последнее валидное
+            self._last_update = datetime.now()
+            self.async_write_ha_state()
+            _LOGGER.debug("Loaded PNG for map %s (%s bytes)", map_id, len(image_bytes))
+            
+        except Exception as e:
+            _LOGGER.error("Error loading PNG for map %s: %s", map_id, e)
+
+    async def async_camera_image(
+        self, width: int | None = None, height: int | None = None
+    ) -> bytes | None:
+        """Return camera image - ALWAYS return something (never None)."""
+        sensor = self.coordinator.cloud_maps_sensor
+        if not sensor:
+            return self._get_loading_image()
+        
+        selected_id = sensor.selected_map_id
+        if not selected_id:
+            return self._get_loading_image()
+        
+        # Если есть prefetch - используем
+        if self._next_map_id == selected_id and self._next_image:
+            self._current_image = self._next_image
+            self._current_map_id = selected_id
+            self._last_update = datetime.now()
+            self._next_image = None
+            self._next_map_id = None
+            self._last_valid_image = self._current_image
+            self.async_write_ha_state()
+            _LOGGER.debug("Used prefetched image for map %s", selected_id)
+            return self._current_image
+        
+        # Если есть текущее изображение - показываем его
+        if self._current_map_id == selected_id and self._current_image:
+            return self._current_image
+        
+        # Если есть последнее валидное изображение - показываем его (даже от другой карты!)
+        if self._last_valid_image:
+            return self._last_valid_image
+        
+        # Всё остальное - заглушка "Загрузка..."
+        return self._get_loading_image()
+
+    def _get_loading_image(self) -> bytes:
+        """Return a loading placeholder image."""
+        try:
+            import io
+            from PIL import Image, ImageDraw
+            
+            img = Image.new('RGB', (400, 400), color=(240, 240, 240))
+            draw = ImageDraw.Draw(img)
+            draw.text((150, 190), "Loading map...", fill=(100, 100, 100))
+            
+            img_byte_arr = io.BytesIO()
+            img.save(img_byte_arr, format='PNG')
+            return img_byte_arr.getvalue()
+        except Exception:
+            # Если PIL недоступен, возвращаем минимальный PNG 1x1
+            return b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82'
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        if not self._cloud_maps_ready:
+            return False
+        if not hasattr(self.coordinator, 'cloud_maps_sensor') or not self.coordinator.cloud_maps_sensor:
+            return False
+        return self.coordinator.cloud_maps_sensor.selected_map_id is not None
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        """Return additional attributes."""
+        return {
+            "current_map_id": self._current_map_id,
+            "image_size": len(self._current_image) if self._current_image else 0,
+            "image_timestamp": self._image_timestamp,
+            "cloud_maps_ready": self._cloud_maps_ready,
+        }
+
+
+class NeatsvorCleanHistoryCamera(Camera, CoordinatorEntity):
+    _attr_has_entity_name = True
+    _attr_translation_key = "clean_history_camera"
+
+    def __init__(self, coordinator):
+        super().__init__()
+        CoordinatorEntity.__init__(self, coordinator)
+        device_id = coordinator.device_id
+        self._attr_unique_id = f"neatsvor_{device_id}_clean_history_camera"
+        self._attr_device_info = coordinator.device_info
+        self._attr_icon = "mdi:history"
+        # Name will be taken from translations via entity_id
+
+        self.content_type = "image/png"
+        self._current_image = None
+        self._current_record_id = None
+        self._next_image = None  # Cache for next map
+        self._next_record_id = None
+        self._last_image_path = None
+        self._last_update = datetime.now()
+
+        self._pending_image = None      
+        self._pending_record_id = None  
+    
+        _LOGGER.debug("CleanHistoryCamera initialized")
+
+        coordinator.clean_history_camera = self
+
+    async def async_added_to_hass(self) -> None:
+        """When entity is added to hass."""
+        await super().async_added_to_hass()
+        _LOGGER.info("CleanHistoryCamera added to hass with entity_id: %s", self.entity_id)
+        
+        # Проверяем, есть ли отложенное изображение
+        if self._pending_image and self._pending_record_id:
+            _LOGGER.info("Applying pending image for record %s", self._pending_record_id)
+            self.update_image(self._pending_record_id, self._pending_image)
+            self._pending_image = None
+            self._pending_record_id = None
+        
+        # Если нет текущего изображения, но есть выбранная запись в сенсоре
+        if not self._current_image and hasattr(self.coordinator, 'clean_history_sensor'):
+            sensor = self.coordinator.clean_history_sensor
+            if sensor and sensor.selected_record_id:
+                _LOGGER.info("Camera has no image but sensor has selected record %s, requesting load", 
+                            sensor.selected_record_id)
+                # Запрашиваем загрузку карты через сенсор
+                await sensor.select_record(sensor.selected_record_id)
+
+    @property
+    def entity_picture(self) -> str | None:
+        """Return URL of image for frontend with cache busting."""
+        url = super().entity_picture
+
+        if self._current_image and self._last_update:
+            timestamp = int(self._last_update.timestamp())
+            if url:
+                if '?' in url:
+                    return f"{url}&t={timestamp}"
+                else:
+                    return f"{url}?t={timestamp}"
+
+        return url
+
+    def prefetch_image(self, record_id: int, image_bytes: bytes):
+        """Prefetch image for faster switching."""
+        self._next_image = image_bytes
+        self._next_record_id = record_id
+        _LOGGER.debug("Prefetched image for record %s", record_id)
+
+    def update_image(self, record_id: int, image_bytes: bytes):
+        """Called by sensor when new image is available."""
+        
+        if self.hass is None:
+            _LOGGER.debug("Camera not yet initialized, storing image for later")
+            self._pending_image = image_bytes
+            self._pending_record_id = record_id
+            return
+        
+        old_record_id = self._current_record_id
+        self._current_record_id = record_id
+        self._current_image = image_bytes
+        self._last_update = datetime.now()
+
+        # Clear prefetch if it's the same record
+        if self._next_record_id == record_id:
+            self._next_image = None
+            self._next_record_id = None
+
+        self.async_write_ha_state()
+
+        _LOGGER.info("Camera updated for record %s (%s bytes) (was %s)", record_id, len(image_bytes), old_record_id)
+
+    def force_refresh(self):
+        """Force refresh camera state."""
+        self._current_image = None
+        self._current_record_id = None
+        self._last_update = datetime.now()
+        self.async_write_ha_state()
+        _LOGGER.debug("Camera force refreshed")
+
+    async def async_camera_image(
+        self, width: int | None = None, height: int | None = None
+    ) -> bytes | None:
+        """Return camera image with prefetch support."""
+        sensor = self.coordinator.clean_history_sensor
+        if not sensor:
+            return None
+
+        selected_id = sensor.selected_record_id
+        if not selected_id:
+            return None
+
+        # If there's a prefetched image for the current record
+        if self._next_record_id == selected_id and self._next_image:
+            # Swap next and current
+            self._current_image = self._next_image
+            self._current_record_id = selected_id
+            self._last_update = datetime.now()
+            self._next_image = None
+            self._next_record_id = None
+            self.async_write_ha_state()
+            _LOGGER.debug("Used prefetched image for record %s", selected_id)
+            return self._current_image
+
+        # If this is the current image
+        if self._current_record_id == selected_id and self._current_image:
+            return self._current_image
+
+        return None
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        if not hasattr(self.coordinator, 'clean_history_sensor'):
+            return False
+        sensor = self.coordinator.clean_history_sensor
+        return sensor is not None and sensor.selected_record_id is not None

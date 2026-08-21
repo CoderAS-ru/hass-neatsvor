@@ -1,0 +1,82 @@
+syntax = "proto3";
+
+package sweeper;
+
+import "sdk_com.proto";
+
+message AppointInfo {
+    int32 index = 1;
+    ValidStatus valid_status = 2;
+    bool switch = 3;
+    string start_time = 4;
+    int32 cycle = 5;
+    int32 clean_mode = 6;
+    int32 clean_times = 7;
+    FanLevel fan_level = 8;
+    TankLevel tank_level = 9;
+    repeated int32 room_ids = 10;
+
+    enum ValidStatus {
+        kValid = 0;
+        kInvalid = 1;
+        kRoomChange = 2;
+        kMapChange = 3;
+    }
+}
+
+message AppointInfos {
+    AppointCmdType cmd_type = 1;
+    repeated AppointInfo appoint_infos = 2;
+
+    enum AppointCmdType {
+        kAddAppoint = 0;
+        kChangeAppoint = 1;
+        kDeleteAppoint = 2;
+    }
+}
+
+message DndInfo {
+    bool switch = 1;
+    string start_time = 2;
+    string end_time = 3;
+    int32 cycle = 4;
+}
+
+message ZoneClean {
+    int32 times = 1;
+    repeated bvsdk.Polygon zones = 2;
+}
+
+message RoomName {
+    int32 room_id = 1;
+    string name = 2;
+}
+
+message RoomAttr {
+    int32 room_id = 1;
+    FanLevel fan_level = 2;
+    TankLevel tank_level = 3;
+    int32 clean_times = 4;
+    int32 clean_mode = 5;
+}
+
+message RoomAttrs {
+    repeated RoomAttr attrs = 1;
+}
+
+enum FanLevel {
+    kFanStop = 0;
+    kFanQuiet = 1;
+    kFanNormal = 2;
+    kFanStrong = 3;
+    kFanMax = 4;
+    kFanInvalid = 15;
+}
+
+enum TankLevel {
+    kTankStop = 0;
+    kTankLow = 1;
+    kTankMiddle = 2;
+    kTankHigh = 3;
+    kTankInvalid = 15;
+}
