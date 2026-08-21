@@ -19,7 +19,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Neatsvor switches."""
-    coordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator = hass.data[DOMAIN][entry.entry_id]['coordinator']
 
     entities = [
         NeatsvorAutoRestoreSwitch(coordinator),
@@ -31,11 +31,12 @@ async def async_setup_entry(
 
 class NeatsvorAutoRestoreSwitch(CoordinatorEntity, SwitchEntity):
     _attr_has_entity_name = True
-    _attr_unique_id = "neatsvor_auto_restore"
     _attr_translation_key = "auto_restore"
 
     def __init__(self, coordinator):
         super().__init__(coordinator)
+        device_id = coordinator.device_id
+        self._attr_unique_id = f"neatsvor_{device_id}_auto_restore"
         self._attr_icon = "mdi:autorenew"
         self._attr_device_info = coordinator.device_info
         self._attr_is_on = self._load_state()

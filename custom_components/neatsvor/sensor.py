@@ -37,7 +37,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Neatsvor sensors."""
-    coordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator = hass.data[DOMAIN][entry.entry_id]['coordinator']
 
     entities = []
 
@@ -232,7 +232,8 @@ class NeatsvorBatterySensor(CoordinatorEntity, SensorEntity):
     def __init__(self, coordinator):
         """Initialize."""
         super().__init__(coordinator)
-        self._attr_unique_id = "neatsvor_battery"
+        device_id = coordinator.device_id
+        self._attr_unique_id = f"neatsvor_{device_id}_battery"
         self._attr_device_info = coordinator.device_info
         self._cached_value = None
 
@@ -297,7 +298,8 @@ class NeatsvorSensor(CoordinatorEntity, SensorEntity):
         self.entity_description = description
         self._source = source
 
-        self._attr_unique_id = f"neatsvor_{description.key}"
+        device_id = coordinator.device_id
+        self._attr_unique_id = f"neatsvor_{device_id}_{description.key}"
         if hasattr(description, 'translation_key'):
             self._attr_translation_key = description.translation_key
         self._attr_device_info = coordinator.device_info
@@ -525,7 +527,8 @@ class NeatsvorMapSensor(CoordinatorEntity, SensorEntity):
     def __init__(self, coordinator):
         """Initialize."""
         super().__init__(coordinator)
-        self._attr_unique_id = "neatsvor_map_data"
+        device_id = coordinator.device_id
+        self._attr_unique_id = f"neatsvor_{device_id}_map_data"
         self._attr_device_info = coordinator.device_info
         self._attr_icon = "mdi:map"
         self._attr_native_value = "0 rooms"
@@ -690,7 +693,8 @@ class NeatsvorCloudMapsSensor(CoordinatorEntity, SensorEntity):
     def __init__(self, coordinator):
         """Initialize."""
         super().__init__(coordinator)
-        self._attr_unique_id = "neatsvor_cloud_maps"
+        device_id = coordinator.device_id
+        self._attr_unique_id = f"neatsvor_{device_id}_cloud_maps"
         self._attr_device_info = coordinator.device_info
         self._attr_icon = "mdi:cloud-outline"
         self._attr_native_value = "0"
@@ -1081,7 +1085,8 @@ class NeatsvorRoomPresetSensor(CoordinatorEntity, SensorEntity):
     def __init__(self, coordinator):
         """Initialize."""
         super().__init__(coordinator)
-        self._attr_unique_id = "neatsvor_room_presets"
+        device_id = coordinator.device_id
+        self._attr_unique_id = f"neatsvor_{device_id}_room_presets"
         self._attr_device_info = coordinator.device_info
         self._attr_icon = "mdi:tune"
         self._attr_native_value = "0 presets"
@@ -1191,7 +1196,8 @@ class NeatsvorRoomListSensor(CoordinatorEntity, SensorEntity):
     def __init__(self, coordinator):
         """Initialize."""
         super().__init__(coordinator)
-        self._attr_unique_id = "neatsvor_room_list"
+        device_id = coordinator.device_id
+        self._attr_unique_id = f"neatsvor_{device_id}_room_list"
         self._attr_device_info = coordinator.device_info
         self._attr_icon = "mdi:format-list-bulleted"
         self._attr_native_value = "0 rooms"
@@ -1225,7 +1231,8 @@ class NeatsvorCurrentMapPresetSensor(CoordinatorEntity, SensorEntity):
     def __init__(self, coordinator):
         """Initialize."""
         super().__init__(coordinator)
-        self._attr_unique_id = "neatsvor_current_map_presets"
+        device_id = coordinator.device_id
+        self._attr_unique_id = f"neatsvor_{device_id}_current_map_presets"
         self._attr_device_info = coordinator.device_info
         self._attr_icon = "mdi:map"
         self._attr_native_value = "0 presets"
@@ -1340,7 +1347,8 @@ class NeatsvorCloudMapPresetSensor(CoordinatorEntity, SensorEntity):
     def __init__(self, coordinator):
         """Initialize."""
         super().__init__(coordinator)
-        self._attr_unique_id = "neatsvor_cloud_map_presets"
+        device_id = coordinator.device_id
+        self._attr_unique_id = f"neatsvor_{device_id}_cloud_map_presets"
         self._attr_device_info = coordinator.device_info
         self._attr_icon = "mdi:cloud"
         self._attr_native_value = "0 presets"
@@ -1467,7 +1475,8 @@ class NeatsvorPresetComparisonSensor(CoordinatorEntity, SensorEntity):
     def __init__(self, coordinator):
         """Initialize."""
         super().__init__(coordinator)
-        self._attr_unique_id = "neatsvor_preset_comparison"
+        device_id = coordinator.device_id
+        self._attr_unique_id = f"neatsvor_{device_id}_preset_comparison"
         self._attr_device_info = coordinator.device_info
         self._attr_icon = "mdi:compare"
         self._attr_native_value = "No comparison"
@@ -1610,7 +1619,8 @@ class NeatsvorCleanHistorySensor(CoordinatorEntity, SensorEntity):
     def __init__(self, coordinator):
         """Initialize."""
         super().__init__(coordinator)
-        self._attr_unique_id = "neatsvor_clean_history"
+        device_id = coordinator.device_id
+        self._attr_unique_id = f"neatsvor_{device_id}_clean_history"
         self._attr_device_info = coordinator.device_info
         self._attr_icon = "mdi:history"
         self._attr_native_value = "0 records"
@@ -2298,7 +2308,8 @@ class NeatsvorMalfunctionSensor(CoordinatorEntity, SensorEntity):
     
     def __init__(self, coordinator):
         super().__init__(coordinator)
-        self._attr_unique_id = "neatsvor_malfunction"
+        device_id = coordinator.device_id
+        self._attr_unique_id = f"neatsvor_{device_id}_malfunction"
         self._attr_device_info = coordinator.device_info
         self._attr_icon = "mdi:alert-circle"
         
@@ -2419,6 +2430,7 @@ class NeatsvorMaintenanceSensor(CoordinatorEntity, SensorEntity):
     def __init__(self, coordinator):
         """Initialize."""
         super().__init__(coordinator)
+        # Этот сенсор уже использует правильный формат с device_id
         self._attr_unique_id = f"{coordinator.device_id}_maintenance"
         self._attr_device_info = coordinator.device_info
         self._attr_icon = "mdi:robot-vacuum"

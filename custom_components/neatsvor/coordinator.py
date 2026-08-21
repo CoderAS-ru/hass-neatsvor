@@ -146,6 +146,7 @@ class NeatsvorCoordinator(DataUpdateCoordinator):
             if rest_ok and self.vacuum and self.vacuum.info:
                 # Increase retry attempts for DNS-sensitive requests
                 max_retries = 3
+                rest_error = None
                 for attempt in range(max_retries):
                     try:
                         await self.vacuum.load_consumables()
@@ -190,10 +191,12 @@ class NeatsvorCoordinator(DataUpdateCoordinator):
                                 "finished": record.get("cleanFinishedFlag", False),
                             }
 
-                        # Break on success
+                        # Break on success - REST data loaded successfully
+                        rest_error = None
                         break
 
                     except Exception as e:
+                        rest_error = e
                         error_str = str(e)
                         if "DNS" in error_str or "Timeout" in error_str or "getaddrinfo" in error_str:
                             if attempt < max_retries - 1:
@@ -201,17 +204,29 @@ class NeatsvorCoordinator(DataUpdateCoordinator):
                                 _LOGGER.warning("DNS/Timeout error, retry %s/%s in %ss: %s", attempt + 1, max_retries, wait_time, error_str)
                                 await asyncio.sleep(wait_time)
                                 continue
-                        # If it's not a DNS error or this is the last attempt, log it
+                        # If it's not a DNS error or this is the last attempt
                         if attempt == max_retries - 1:
                             _LOGGER.warning("Error fetching REST data after %s attempts: %s", max_retries, e)
-                        else:
-                            raise  # Re-raise for retry
+                            # Don't raise - we have MQTT data, REST is optional
+                
+                # If REST completely failed and we have no data at all, raise UpdateFailed
+                if rest_error and not data.get("battery_level") and not data.get("status_code"):
+                    _LOGGER.error("REST data fetch failed and no MQTT data available")
+                    raise UpdateFailed(f"Failed to fetch data: {rest_error}")
 
             return data
 
+        except UpdateFailed:
+            # Re-raise UpdateFailed to notify HA
+            raise
+            
         except Exception as err:
-            _LOGGER.error("Update error: %s", err)
-            # Return last known data if available
+            _LOGGER.error("Update error: %s", err, exc_info=True)
+            # If we have no data at all, raise UpdateFailed
+            if not self.data:
+                raise UpdateFailed(f"Error updating: {err}") from err
+            # If we have cached data, return it but log the error
+            _LOGGER.warning("Using cached data due to update error")
             return self.data or {}
 
     def _get_status_text(self, sensors) -> str:

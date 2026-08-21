@@ -20,7 +20,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Neatsvor buttons."""
-    coordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator = hass.data[DOMAIN][entry.entry_id]['coordinator']
 
     entities = [
         NeatsvorRefreshCloudMapsButton(coordinator),
@@ -39,12 +39,13 @@ async def async_setup_entry(
 
 class NeatsvorRefreshCloudMapsButton(CoordinatorEntity, ButtonEntity):
     _attr_has_entity_name = True
-    _attr_unique_id = "neatsvor_refresh_cloud_maps"
     _attr_translation_key = "refresh_cloud_maps"
     _attr_icon = "mdi:refresh"
 
     def __init__(self, coordinator):
         super().__init__(coordinator)
+        device_id = coordinator.device_id
+        self._attr_unique_id = f"neatsvor_{device_id}_refresh_cloud_maps"
         self._attr_device_info = coordinator.device_info
 
     async def async_press(self) -> None:
@@ -62,12 +63,13 @@ class NeatsvorRefreshCloudMapsButton(CoordinatorEntity, ButtonEntity):
 
 class NeatsvorSetReferenceMapButton(CoordinatorEntity, ButtonEntity):
     _attr_has_entity_name = True
-    _attr_unique_id = "neatsvor_set_reference_map"
     _attr_translation_key = "set_reference_map"
     _attr_icon = "mdi:map-marker-star"
 
     def __init__(self, coordinator):
         super().__init__(coordinator)
+        device_id = coordinator.device_id
+        self._attr_unique_id = f"neatsvor_{device_id}_set_reference_map"
         self._attr_device_info = coordinator.device_info
 
     async def async_press(self) -> None:
@@ -98,13 +100,14 @@ class NeatsvorSetReferenceMapButton(CoordinatorEntity, ButtonEntity):
 class NeatsvorRestoreReferenceMapButton(CoordinatorEntity, ButtonEntity):
     """Button to restore the reference map from the device."""
     _attr_has_entity_name = True
-    _attr_unique_id = "neatsvor_restore_reference_map"
     _attr_translation_key = "restore_reference_map"
     _attr_icon = "mdi:restore"
 
     def __init__(self, coordinator):
         """Initialize."""
         super().__init__(coordinator)
+        device_id = coordinator.device_id
+        self._attr_unique_id = f"neatsvor_{device_id}_restore_reference_map"
         self._attr_device_info = coordinator.device_info
 
     async def async_press(self) -> None:
@@ -145,13 +148,14 @@ class NeatsvorRestoreReferenceMapButton(CoordinatorEntity, ButtonEntity):
 class NeatsvorDownloadMapButton(CoordinatorEntity, ButtonEntity):
     """Button to download the selected cloud map."""
     _attr_has_entity_name = True
-    _attr_unique_id = "neatsvor_download_map"
     _attr_translation_key = "download_map"
     _attr_icon = "mdi:download"
 
     def __init__(self, coordinator):
         """Initialize."""
         super().__init__(coordinator)
+        device_id = coordinator.device_id
+        self._attr_unique_id = f"neatsvor_{device_id}_download_map"
         self._attr_device_info = coordinator.device_info
 
     async def async_press(self) -> None:
@@ -209,13 +213,14 @@ class NeatsvorDownloadMapButton(CoordinatorEntity, ButtonEntity):
 class NeatsvorDeleteCloudMapButton(CoordinatorEntity, ButtonEntity):
     """Button to delete the selected cloud map."""
     _attr_has_entity_name = True
-    _attr_unique_id = "neatsvor_delete_cloud_map"
     _attr_translation_key = "delete_cloud_map"
     _attr_icon = "mdi:delete"
     
     def __init__(self, coordinator):
         """Initialize."""
         super().__init__(coordinator)
+        device_id = coordinator.device_id
+        self._attr_unique_id = f"neatsvor_{device_id}_delete_cloud_map"
         self._attr_device_info = coordinator.device_info
 
     async def async_press(self) -> None:
@@ -257,13 +262,14 @@ class NeatsvorDeleteCloudMapButton(CoordinatorEntity, ButtonEntity):
 class NeatsvorSaveCurrentMapButton(CoordinatorEntity, ButtonEntity):
     """Button to save the current map to the cloud."""
     _attr_has_entity_name = True
-    _attr_unique_id = "neatsvor_save_current_map"
     _attr_translation_key = "save_current_map"
     _attr_icon = "mdi:cloud-upload"
     
     def __init__(self, coordinator):
         """Initialize."""
         super().__init__(coordinator)
+        device_id = coordinator.device_id
+        self._attr_unique_id = f"neatsvor_{device_id}_save_current_map"
         self._attr_device_info = coordinator.device_info
 
     async def async_press(self) -> None:
@@ -289,13 +295,14 @@ class NeatsvorSaveCurrentMapButton(CoordinatorEntity, ButtonEntity):
 class NeatsvorUseSelectedMapButton(CoordinatorEntity, ButtonEntity):
     """Button to use the selected cloud map as the current map."""
     _attr_has_entity_name = True
-    _attr_unique_id = "neatsvor_use_selected_map"
     _attr_translation_key = "use_selected_map"
     _attr_icon = "mdi:map-check"
     
     def __init__(self, coordinator):
         """Initialize."""
         super().__init__(coordinator)
+        device_id = coordinator.device_id
+        self._attr_unique_id = f"neatsvor_{device_id}_use_selected_map"
         self._attr_device_info = coordinator.device_info
 
     async def async_press(self) -> None:
@@ -310,12 +317,13 @@ class NeatsvorUseSelectedMapButton(CoordinatorEntity, ButtonEntity):
 class NeatsvorRefreshCleanHistoryButton(CoordinatorEntity, ButtonEntity):
     """Button to force load clean history maps."""
     _attr_has_entity_name = True
-    _attr_unique_id = "neatsvor_refresh_clean_history"
     _attr_translation_key = "refresh_clean_history"
     _attr_icon = "mdi:refresh"
 
     def __init__(self, coordinator):
         super().__init__(coordinator)
+        device_id = coordinator.device_id
+        self._attr_unique_id = f"neatsvor_{device_id}_refresh_clean_history"
         self._attr_device_info = coordinator.device_info
 
     async def async_press(self) -> None:

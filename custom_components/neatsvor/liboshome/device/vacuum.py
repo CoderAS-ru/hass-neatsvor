@@ -1,7 +1,7 @@
 """
 Unified class for controlling Neatsvor vacuum cleaner.
 Combines REST, MQTT, DP and maps.
-# custom_components\neatsvor\liboshome\device\
+# custom_components/neatsvor/liboshome/device/
 """
 
 import asyncio

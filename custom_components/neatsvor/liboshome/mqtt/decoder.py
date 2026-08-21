@@ -7,6 +7,7 @@ from typing import Iterator, Tuple, Any, Optional
 import os
 import sys
 
+# Настраиваем путь для импорта protobuf
 proto_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'protobuf')
 if proto_dir not in sys.path:
     sys.path.insert(0, proto_dir)
@@ -80,28 +81,37 @@ def decode_dp_payload(payload: bytes) -> Iterator[Tuple[int, Any]]:
 
 
 def _extract_value_from_body(body: bvsdk.MqttMsgBody) -> Any:
-    """Extract value from body message."""
-    # Check which field is set
+    """Extract value from body message using HasField for reliability."""
     try:
-        # New protobuf API
-        if hasattr(body, '_pb'):
-            pb = body._pb
-            if pb.HasField('int_value'):
-                return body.int_value
-            elif pb.HasField('bool_value'):
-                return body.bool_value
-            elif pb.HasField('string_value'):
-                return body.string_value
-        else:
-            # Old API or fallback
-            if body.int_value != 0:
-                return body.int_value
-            elif body.bool_value != False:
-                return body.bool_value
-            elif body.string_value != "":
-                return body.string_value
+        # Используем HasField для надежного определения типа
+        if body.HasField('int_value'):
+            return body.int_value
+        elif body.HasField('bool_value'):
+            return body.bool_value
+        elif body.HasField('string_value'):
+            return body.string_value
+        elif body.HasField('float_value'):
+            return body.float_value
+        elif body.HasField('bytes_value'):
+            return body.bytes_value
     except Exception as e:
-        _LOGGER.debug("Error extracting value: %s", e)
+        _LOGGER.debug("Error extracting value with HasField: %s", e)
+        
+        # Fallback для старых версий protobuf
+        try:
+            # Проверяем наличие атрибутов через hasattr
+            if hasattr(body, 'int_value') and body.int_value != 0:
+                return body.int_value
+            elif hasattr(body, 'bool_value') and body.bool_value != False:
+                return body.bool_value
+            elif hasattr(body, 'string_value') and body.string_value != "":
+                return body.string_value
+            elif hasattr(body, 'float_value') and body.float_value != 0.0:
+                return body.float_value
+            elif hasattr(body, 'bytes_value') and body.bytes_value != b'':
+                return body.bytes_value
+        except Exception as e2:
+            _LOGGER.debug("Fallback extraction failed: %s", e2)
 
     return None
 

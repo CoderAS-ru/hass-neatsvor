@@ -30,10 +30,6 @@ from .liboshome.device.vacuum import NeatsvorVacuum
 
 _LOGGER = logging.getLogger(__name__)
 
-_shared_vacuum = None
-_shared_config = None
-_initialized = False
-
 
 async def _migrate_old_config(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Migrate old configuration (with region) to new format (with phone_code)."""
@@ -176,130 +172,135 @@ def _get_localized_message(hass, key: str, default: str, **kwargs) -> str:
     return msg
 
 
+async def _build_config(hass: HomeAssistant, entry: ConfigEntry) -> NeatsvorConfig:
+    """Build NeatsvorConfig from entry data."""
+    phone_code = entry.data.get(CONF_PHONE_CODE, DEFAULT_PHONE_CODE)
+    app_type = entry.data.get("app_type", DEFAULT_APP)
+    
+    # Try to get data center from stored values first
+    rest_url = entry.data.get("rest_url")
+    mqtt_host = entry.data.get("mqtt_host")
+    mqtt_port = entry.data.get("mqtt_port", MQTT_PORT)
+    
+    # If not stored, get from data center manager
+    if not rest_url or not mqtt_host:
+        manager = get_data_center_manager(hass)
+        data_center = await hass.async_add_executor_job(
+            manager.get_data_center_by_phone_code, phone_code, hass.config.language
+        )
+        if data_center:
+            rest_url = data_center["rest_url"]
+            mqtt_host = data_center["mqtt_host"]
+            mqtt_port = data_center.get("mqtt_port", MQTT_PORT)
+        else:
+            # Fallback to COUNTRIES using old method (for migration)
+            country_map = {"7": "ru", "86": "cn", "49": "de", "1": "us", "65": "sg"}
+            region = country_map.get(phone_code, DEFAULT_COUNTRY)
+            country_data = COUNTRIES.get(region, COUNTRIES[DEFAULT_COUNTRY])
+            rest_url = country_data["rest_url"]
+            mqtt_host = country_data["mqtt_host"]
+            mqtt_port = MQTT_PORT
+    
+    app_config = APP_CONFIGS.get(app_type, APP_CONFIGS[DEFAULT_APP])
+    
+    rest_config = RestConfig(
+        base_url=rest_url,
+        app_key=app_config["app_key"],
+        app_secret=app_config["app_secret"],
+        package_name=app_config["package_name"],
+        source=app_config["source"],
+        reg_id="",
+        country=entry.data.get("country_code", "unknown"),
+        user_agent="okhttp/4.9.1"
+    )
+
+    mqtt_config = MQTTConfig(
+        host=mqtt_host,
+        port=mqtt_port,
+        username=MQTT_USERNAME,
+        password=MQTT_PASSWORD
+    )
+
+    credentials = Credentials(
+        email=entry.data["email"],
+        password=entry.data["password"]
+    )
+
+    device_config = DeviceConfig(
+        default_timeout=DEFAULT_TIMEOUT,
+        command_delay=DEFAULT_COMMAND_DELAY,
+        retry_count=DEFAULT_RETRY_COUNT
+    )
+
+    return NeatsvorConfig(
+        rest=rest_config,
+        mqtt=mqtt_config,
+        credentials=credentials,
+        device=device_config
+    )
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Neatsvor from a config entry."""
-    global _shared_vacuum, _shared_config, _initialized
-
+    
     # Migrate old configuration if needed
     await _migrate_old_config(hass, entry)
 
+    # Check if this entry is already initialized
     if entry.entry_id in hass.data.get(DOMAIN, {}):
         _LOGGER.warning("Entry %s already initialized, skipping", entry.entry_id)
         return True
 
-    if _initialized:
-        _LOGGER.warning("Integration already initialized globally, skipping")
-        return True
-
     hass.data.setdefault(DOMAIN, {})
-
-    if _shared_config is None:
-        # Get phone_code and app_type from configuration
-        phone_code = entry.data.get(CONF_PHONE_CODE, DEFAULT_PHONE_CODE)
-        app_type = entry.data.get("app_type", DEFAULT_APP)
-        
-        # Try to get data center from stored values first
-        rest_url = entry.data.get("rest_url")
-        mqtt_host = entry.data.get("mqtt_host")
-        mqtt_port = entry.data.get("mqtt_port", MQTT_PORT)
-        
-        # If not stored, get from data center manager
-        if not rest_url or not mqtt_host:
-            manager = get_data_center_manager(hass)
-            data_center = await hass.async_add_executor_job(
-                manager.get_data_center_by_phone_code, phone_code, hass.config.language
-            )
-            if data_center:
-                rest_url = data_center["rest_url"]
-                mqtt_host = data_center["mqtt_host"]
-                mqtt_port = data_center.get("mqtt_port", MQTT_PORT)
-            else:
-                # Fallback to COUNTRIES using old method (for migration)
-                country_map = {"7": "ru", "86": "cn", "49": "de", "1": "us", "65": "sg"}
-                region = country_map.get(phone_code, DEFAULT_COUNTRY)
-                country_data = COUNTRIES.get(region, COUNTRIES[DEFAULT_COUNTRY])
-                rest_url = country_data["rest_url"]
-                mqtt_host = country_data["mqtt_host"]
-                mqtt_port = MQTT_PORT
-        
-        app_config = APP_CONFIGS.get(app_type, APP_CONFIGS[DEFAULT_APP])
-        
-        rest_config = RestConfig(
-            base_url=rest_url,
-            app_key=app_config["app_key"],
-            app_secret=app_config["app_secret"],
-            package_name=app_config["package_name"],
-            source=app_config["source"],
-            reg_id="",
-            country=entry.data.get("country_code", "unknown"),
-            user_agent="okhttp/4.9.1"
-        )
-
-        mqtt_config = MQTTConfig(
-            host=mqtt_host,
-            port=mqtt_port,
-            username=MQTT_USERNAME,
-            password=MQTT_PASSWORD
-        )
-
-        credentials = Credentials(
-            email=entry.data["email"],
-            password=entry.data["password"]
-        )
-
-        device_config = DeviceConfig(
-            default_timeout=DEFAULT_TIMEOUT,
-            command_delay=DEFAULT_COMMAND_DELAY,
-            retry_count=DEFAULT_RETRY_COUNT
-        )
-
-        _shared_config = NeatsvorConfig(
-            rest=rest_config,
-            mqtt=mqtt_config,
-            credentials=credentials,
-            device=device_config
-        )
-
-    if _shared_vacuum is None:
-        app_type = entry.data.get("app_type", DEFAULT_APP)
-        _shared_vacuum = NeatsvorVacuum(_shared_config, app_type=app_type)
-
-    if not _shared_vacuum.is_initialized:
-        await _shared_vacuum.initialize()
-
-    coordinator = NeatsvorCoordinator(hass, _shared_vacuum)
-    _shared_vacuum.set_hass(hass)
-
-    # Create history entities
-    from .sensor import NeatsvorCleanHistorySensor
-    from .select import NeatsvorCleanHistorySelect
+    
+    # Build config for this entry
+    config = await _build_config(hass, entry)
+    
+    # Create vacuum instance for this entry
+    app_type = entry.data.get("app_type", DEFAULT_APP)
+    vacuum = NeatsvorVacuum(config, app_type=app_type)
+    
+    if not vacuum.is_initialized:
+        await vacuum.initialize()
+    
+    vacuum.set_hass(hass)
+    
+    # Create coordinator
+    coordinator = NeatsvorCoordinator(hass, vacuum)
+    
+    # Create select storage
     from .select_storage import NeatsvorSelectStorage
-
     coordinator.select_storage = NeatsvorSelectStorage(hass, entry.entry_id)
 
-    # Миграция старых данных
+    # Migrate old data
     old_storage_path = hass.config.path(f"custom_components/neatsvor/select_states_{entry.entry_id}.json")
     await coordinator.select_storage.async_migrate_from_file(Path(old_storage_path))
 
-    # Убедимся, что данные загружены
-    await coordinator.select_storage.async_ensure_loaded()    
+    # Ensure data is loaded
+    await coordinator.select_storage.async_ensure_loaded()
     
-    hass.data[DOMAIN][entry.entry_id] = coordinator
+    # Store in hass.data
+    entry_data = {
+        'coordinator': coordinator,
+        'vacuum': vacuum,
+        'config': config,
+    }
+    hass.data[DOMAIN][entry.entry_id] = entry_data
 
     _LOGGER.info("Registering platforms: %s", PLATFORMS)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-    async def _delayed_init():
-        await asyncio.sleep(5)
-
-    asyncio.create_task(_delayed_init())
-
-    #await coordinator.async_config_entry_first_refresh()
+    # Start coordinator refresh
     asyncio.create_task(coordinator.async_config_entry_first_refresh())
 
-    await _async_register_services(hass)
+    # Register services only once globally
+    if not hass.data[DOMAIN].get('services_registered'):
+        await _async_register_services(hass)
+        hass.data[DOMAIN]['services_registered'] = True
 
-    _initialized = True
+    # Register stop handler
+    hass.bus.async_listen_once("homeassistant_stop", _async_close_all_vacuums)
+
     _LOGGER.info("Neatsvor integration initialized for entry %s", entry.entry_id)
 
     return True
@@ -312,38 +313,50 @@ async def _async_register_services(hass: HomeAssistant):
     async def async_request_all_data(call: ServiceCall) -> None:
         """Request all data as the official app does."""
         _LOGGER.info("Service call: request_all_data")
-        for entry_id, coord in hass.data[DOMAIN].items():
-            if hasattr(coord, 'vacuum') and coord.vacuum:
-                await coord.vacuum.request_all_data()
-                await coord.async_request_refresh()
-                _LOGGER.info("Data requested")
+        for entry_id, entry_data in hass.data[DOMAIN].items():
+            if entry_id == 'services_registered':
+                continue
+            coordinator = entry_data.get('coordinator')
+            if coordinator and hasattr(coordinator, 'vacuum') and coordinator.vacuum:
+                await coordinator.vacuum.request_all_data()
+                await coordinator.async_request_refresh()
+                _LOGGER.info("Data requested for entry %s", entry_id)
 
     async def async_request_map(call: ServiceCall) -> None:
         """Request the current map."""
         _LOGGER.info("Service call: request_map")
-        for entry_id, coord in hass.data[DOMAIN].items():
-            if hasattr(coord, 'vacuum') and coord.vacuum:
-                await coord.vacuum.request_map()
-                await coord.async_request_refresh()
-                _LOGGER.info("Map requested")
+        for entry_id, entry_data in hass.data[DOMAIN].items():
+            if entry_id == 'services_registered':
+                continue
+            coordinator = entry_data.get('coordinator')
+            if coordinator and hasattr(coordinator, 'vacuum') and coordinator.vacuum:
+                await coordinator.vacuum.request_map()
+                await coordinator.async_request_refresh()
+                _LOGGER.info("Map requested for entry %s", entry_id)
 
     async def async_build_map(call: ServiceCall) -> None:
         """Perform a fast map build."""
         _LOGGER.info("Service call: build_map")
-        for entry_id, coord in hass.data[DOMAIN].items():
-            if hasattr(coord, 'vacuum') and coord.vacuum:
-                await coord.vacuum.build_map()
-                await coord.async_request_refresh()
-                _LOGGER.info("Map building started")
+        for entry_id, entry_data in hass.data[DOMAIN].items():
+            if entry_id == 'services_registered':
+                continue
+            coordinator = entry_data.get('coordinator')
+            if coordinator and hasattr(coordinator, 'vacuum') and coordinator.vacuum:
+                await coordinator.vacuum.build_map()
+                await coordinator.async_request_refresh()
+                _LOGGER.info("Map building started for entry %s", entry_id)
 
     async def async_empty_dust(call: ServiceCall) -> None:
         """Empty the dust bin."""
         _LOGGER.info("Service call: empty_dust")
-        for entry_id, coord in hass.data[DOMAIN].items():
-            if hasattr(coord, 'vacuum') and coord.vacuum:
-                await coord.vacuum.empty_dust()
-                await coord.async_request_refresh()
-                _LOGGER.info("Dust bin emptied")
+        for entry_id, entry_data in hass.data[DOMAIN].items():
+            if entry_id == 'services_registered':
+                continue
+            coordinator = entry_data.get('coordinator')
+            if coordinator and hasattr(coordinator, 'vacuum') and coordinator.vacuum:
+                await coordinator.vacuum.empty_dust()
+                await coordinator.async_request_refresh()
+                _LOGGER.info("Dust bin emptied for entry %s", entry_id)
 
     async def async_clean_room_with_preset(call: ServiceCall) -> None:
         """Clean a room with its saved preset."""
@@ -351,18 +364,21 @@ async def _async_register_services(hass: HomeAssistant):
         use_preset = call.data.get("use_preset", True)
 
         _LOGGER.info("Service call: clean_room_with_preset: %s", room_name)
-        for entry_id, coord in hass.data[DOMAIN].items():
-            if hasattr(coord, 'vacuum') and coord.vacuum:
-                rooms = await coord.vacuum.get_available_rooms()
+        for entry_id, entry_data in hass.data[DOMAIN].items():
+            if entry_id == 'services_registered':
+                continue
+            coordinator = entry_data.get('coordinator')
+            if coordinator and hasattr(coordinator, 'vacuum') and coordinator.vacuum:
+                rooms = await coordinator.vacuum.get_available_rooms()
                 room_map = {r['name']: r['id'] for r in rooms}
 
                 if room_name in room_map:
                     if use_preset:
-                        await coord.vacuum.start_room_clean_with_preset([room_map[room_name]])
+                        await coordinator.vacuum.start_room_clean_with_preset([room_map[room_name]])
                     else:
-                        await coord.vacuum.start_room_clean([room_map[room_name]])
+                        await coordinator.vacuum.start_room_clean([room_map[room_name]])
 
-                    await coord.async_request_refresh()
+                    await coordinator.async_request_refresh()
                     _LOGGER.info("Room cleaning started for: %s", room_name)
                     
                     # Send localized notification with named placeholder
@@ -394,13 +410,16 @@ async def _async_register_services(hass: HomeAssistant):
 
         _LOGGER.info("Service call: restore_reference_map")
 
-        for entry_id, coord in hass.data[DOMAIN].items():
-            if hasattr(coord, 'cloud_maps_sensor'):
-                sensor = coord.cloud_maps_sensor
+        for entry_id, entry_data in hass.data[DOMAIN].items():
+            if entry_id == 'services_registered':
+                continue
+            coordinator = entry_data.get('coordinator')
+            if coordinator and hasattr(coordinator, 'cloud_maps_sensor'):
+                sensor = coordinator.cloud_maps_sensor
                 reference_id = getattr(sensor, '_reference_map_id', None)
 
                 if not reference_id:
-                    _LOGGER.warning("No reference map set")
+                    _LOGGER.warning("No reference map set for entry %s", entry_id)
                     msg = _get_localized_message(
                         hass, "no_reference_map", 
                         "No reference map has been set. Please set a reference map first."
@@ -418,7 +437,6 @@ async def _async_register_services(hass: HomeAssistant):
 
                 _LOGGER.info("Restoring from reference map: %s", reference_map.get('name'))
 
-                # Исправлено: именованные плейсхолдеры
                 msg = _get_localized_message(
                     hass, "restored_from_reference", 
                     "Restored from reference map '{name}'\n🏠 Rooms: {rooms}\n📏 Area: {area}m²",
@@ -437,14 +455,17 @@ async def _async_register_services(hass: HomeAssistant):
 
         _LOGGER.info("Service call: compare_with_reference")
 
-        for entry_id, coord in hass.data[DOMAIN].items():
-            if hasattr(coord, 'cloud_maps_sensor'):
-                sensor = coord.cloud_maps_sensor
+        for entry_id, entry_data in hass.data[DOMAIN].items():
+            if entry_id == 'services_registered':
+                continue
+            coordinator = entry_data.get('coordinator')
+            if coordinator and hasattr(coordinator, 'cloud_maps_sensor'):
+                sensor = coordinator.cloud_maps_sensor
                 reference_id = getattr(sensor, '_reference_map_id', None)
                 selected_id = sensor.selected_map_id
 
                 if not reference_id:
-                    _LOGGER.warning("No reference map set")
+                    _LOGGER.warning("No reference map set for entry %s", entry_id)
                     msg = _get_localized_message(
                         hass, "no_reference_set", 
                         "No reference map has been set."
@@ -456,7 +477,7 @@ async def _async_register_services(hass: HomeAssistant):
                     return
 
                 if not selected_id:
-                    _LOGGER.warning("No map selected")
+                    _LOGGER.warning("No map selected for entry %s", entry_id)
                     msg = _get_localized_message(
                         hass, "please_select_map", 
                         "Please select a map to compare."
@@ -485,7 +506,6 @@ async def _async_register_services(hass: HomeAssistant):
                     diff_line = f"📏 Area: {reference_map.get('area')}m² vs {selected_map.get('area')}m²"
                     differences.append(diff_line)
 
-                # Исправлено: именованные плейсхолдеры и запятая
                 base_msg = _get_localized_message(
                     hass, "comparison_result",
                     "📊 Comparison: '{selected}' vs Reference '{reference}'\n",
@@ -495,7 +515,6 @@ async def _async_register_services(hass: HomeAssistant):
                 
                 if differences:
                     diff_text = "\n".join(differences)
-                    # Исправлено: именованные плейсхолдеры
                     msg = base_msg + _get_localized_message(
                         hass, "differences_found", 
                         "\n⚠️ Differences found:\n{diff}", 
@@ -524,30 +543,36 @@ async def _async_register_services(hass: HomeAssistant):
         """Force update all map-related sensors."""
         _LOGGER.info("Service call: force_update_maps")
 
-        for entry_id, coord in hass.data[DOMAIN].items():
-            if hasattr(coord, 'cloud_maps_sensor'):
-                await coord.cloud_maps_sensor.async_force_update()
+        for entry_id, entry_data in hass.data[DOMAIN].items():
+            if entry_id == 'services_registered':
+                continue
+            coordinator = entry_data.get('coordinator')
+            if coordinator:
+                if hasattr(coordinator, 'cloud_maps_sensor'):
+                    await coordinator.cloud_maps_sensor.async_force_update()
 
-            if hasattr(coord, 'cloud_map_presets'):
-                await coord.cloud_map_presets.async_update()
+                if hasattr(coordinator, 'cloud_map_presets'):
+                    await coordinator.cloud_map_presets.async_update()
 
-            if hasattr(coord, 'preset_comparison'):
-                await coord.preset_comparison.async_update()
+                if hasattr(coordinator, 'preset_comparison'):
+                    await coordinator.preset_comparison.async_update()
 
-            if hasattr(coord, 'room_list'):
-                await coord.room_list.async_update()
+                if hasattr(coordinator, 'room_list'):
+                    await coordinator.room_list.async_update()
 
     async def async_cleanup_maps(call: ServiceCall) -> None:
         """Manually clean up old maps and metadata."""
         keep_last = call.data.get("keep_last", 10)
         _LOGGER.info("Service call: cleanup_maps (keep_last=%s)", keep_last)
 
-        for entry_id, coord in hass.data[DOMAIN].items():
-            if hasattr(coord, 'vacuum') and coord.vacuum:
-                if hasattr(coord.vacuum, 'visualizer'):
-                    await coord.vacuum.visualizer.cleanup_realtime_maps(keep_last)
+        for entry_id, entry_data in hass.data[DOMAIN].items():
+            if entry_id == 'services_registered':
+                continue
+            coordinator = entry_data.get('coordinator')
+            if coordinator and hasattr(coordinator, 'vacuum') and coordinator.vacuum:
+                if hasattr(coordinator.vacuum, 'visualizer'):
+                    await coordinator.vacuum.visualizer.cleanup_realtime_maps(keep_last)
 
-                    # Исправлено: именованные плейсхолдеры
                     msg = _get_localized_message(
                         hass, "cleanup_completed", 
                         "Cleanup completed. Kept the last {count} maps.",
@@ -562,12 +587,16 @@ async def _async_register_services(hass: HomeAssistant):
         """Save the states of all select entities."""
         storage = hass.data.get(DOMAIN, {}).get('select_states', {})
 
-        for entry_id, coord in hass.data[DOMAIN].items():
-            if hasattr(coord, 'room_select') and coord.room_select:
-                storage['room_select'] = coord.room_select._attr_current_option
+        for entry_id, entry_data in hass.data[DOMAIN].items():
+            if entry_id == 'services_registered':
+                continue
+            coordinator = entry_data.get('coordinator')
+            if coordinator:
+                if hasattr(coordinator, 'room_select') and coordinator.room_select:
+                    storage['room_select'] = coordinator.room_select._attr_current_option
 
-            if hasattr(coord, 'cloud_map_select') and coord.cloud_map_select:
-                storage['cloud_map_select'] = coord.cloud_map_select._attr_current_option
+                if hasattr(coordinator, 'cloud_map_select') and coordinator.cloud_map_select:
+                    storage['cloud_map_select'] = coordinator.cloud_map_select._attr_current_option
 
         _LOGGER.info("Select states saved: %s", storage)
 
@@ -575,27 +604,34 @@ async def _async_register_services(hass: HomeAssistant):
         """Restore the states of all select entities."""
         storage = hass.data.get(DOMAIN, {}).get('select_states', {})
 
-        for entry_id, coord in hass.data[DOMAIN].items():
-            if hasattr(coord, 'room_select') and 'room_select' in storage:
-                room = storage['room_select']
-                if room and room in coord.room_select._attr_options:
-                    await coord.room_select.async_select_option(room)
+        for entry_id, entry_data in hass.data[DOMAIN].items():
+            if entry_id == 'services_registered':
+                continue
+            coordinator = entry_data.get('coordinator')
+            if coordinator:
+                if hasattr(coordinator, 'room_select') and 'room_select' in storage:
+                    room = storage['room_select']
+                    if room and room in coordinator.room_select._attr_options:
+                        await coordinator.room_select.async_select_option(room)
 
-            if hasattr(coord, 'cloud_map_select') and 'cloud_map_select' in storage:
-                map_option = storage['cloud_map_select']
-                if map_option and map_option in coord.cloud_map_select._attr_options:
-                    await coord.cloud_map_select.async_select_option(map_option)
+                if hasattr(coordinator, 'cloud_map_select') and 'cloud_map_select' in storage:
+                    map_option = storage['cloud_map_select']
+                    if map_option and map_option in coordinator.cloud_map_select._attr_options:
+                        await coordinator.cloud_map_select.async_select_option(map_option)
 
         _LOGGER.info("Select states restored")
 
     async def async_set_reference_map(call: ServiceCall) -> None:
         """Set the current map as the reference."""
         _LOGGER.info("Service call: set_reference_map")
-        for entry_id, coord in hass.data[DOMAIN].items():
-            if hasattr(coord, 'vacuum') and coord.vacuum:
-                await coord.vacuum.save_reference_map()
-                await coord.async_request_refresh()
-                _LOGGER.info("Reference map saved")
+        for entry_id, entry_data in hass.data[DOMAIN].items():
+            if entry_id == 'services_registered':
+                continue
+            coordinator = entry_data.get('coordinator')
+            if coordinator and hasattr(coordinator, 'vacuum') and coordinator.vacuum:
+                await coordinator.vacuum.save_reference_map()
+                await coordinator.async_request_refresh()
+                _LOGGER.info("Reference map saved for entry %s", entry_id)
 
     async def async_use_cloud_map(call: ServiceCall) -> None:
         """Use a specific cloud map as the current map."""
@@ -604,11 +640,14 @@ async def _async_register_services(hass: HomeAssistant):
         map_md5 = call.data.get("map_md5")
 
         _LOGGER.info("Service call: use_cloud_map (map_id=%s)", map_id)
-        for entry_id, coord in hass.data[DOMAIN].items():
-            if hasattr(coord, 'vacuum') and coord.vacuum:
-                success = await coord.vacuum.use_cloud_map(map_id, map_url, map_md5)
+        for entry_id, entry_data in hass.data[DOMAIN].items():
+            if entry_id == 'services_registered':
+                continue
+            coordinator = entry_data.get('coordinator')
+            if coordinator and hasattr(coordinator, 'vacuum') and coordinator.vacuum:
+                success = await coordinator.vacuum.use_cloud_map(map_id, map_url, map_md5)
                 if success:
-                    _LOGGER.info("Map %s is now current", map_id)
+                    _LOGGER.info("Map %s is now current for entry %s", map_id, entry_id)
                     msg = _get_localized_message(
                         hass, "map_activated", 
                         "Map activated successfully"
@@ -621,36 +660,41 @@ async def _async_register_services(hass: HomeAssistant):
     async def async_use_selected_cloud_map(call: ServiceCall) -> None:
         """Use the selected cloud map as the current map."""
         _LOGGER.info("Service call: use_selected_cloud_map")
-        for entry_id, coord in hass.data[DOMAIN].items():
-            if hasattr(coord, 'cloud_maps_sensor'):
-                sensor = coord.cloud_maps_sensor
+        for entry_id, entry_data in hass.data[DOMAIN].items():
+            if entry_id == 'services_registered':
+                continue
+            coordinator = entry_data.get('coordinator')
+            if coordinator and hasattr(coordinator, 'cloud_maps_sensor'):
+                sensor = coordinator.cloud_maps_sensor
                 await sensor.use_selected_cloud_map()
             else:
-                _LOGGER.error("No cloud_maps_sensor in coordinator")
+                _LOGGER.error("No cloud_maps_sensor in coordinator for entry %s", entry_id)
 
     async def async_force_load_history(call: ServiceCall) -> None:
         """Force load all history maps."""
         _LOGGER.info("Service call: force_load_history")
 
-        for entry_id, coord in hass.data[DOMAIN].items():
-            if hasattr(coord, 'vacuum') and coord.vacuum:
-                if hasattr(coord.vacuum, 'clean_history'):
-                    records = await coord.vacuum.clean_history.get_clean_history(
-                        coord.vacuum.info.device_id, 10
+        for entry_id, entry_data in hass.data[DOMAIN].items():
+            if entry_id == 'services_registered':
+                continue
+            coordinator = entry_data.get('coordinator')
+            if coordinator and hasattr(coordinator, 'vacuum') and coordinator.vacuum:
+                if hasattr(coordinator.vacuum, 'clean_history'):
+                    records = await coordinator.vacuum.clean_history.get_clean_history(
+                        coordinator.vacuum.info.device_id, 10
                     )
 
                     _LOGGER.info("Found %s records", len(records))
 
                     for i, record in enumerate(records):
                         _LOGGER.info("Loading record %s...", record.record_id)
-                        map_data = await coord.vacuum.clean_history.load_clean_record_map(record)
+                        map_data = await coordinator.vacuum.clean_history.load_clean_record_map(record)
 
                         if map_data:
                             _LOGGER.info("Record %s loaded", record.record_id)
                         else:
                             _LOGGER.error("Failed to load record %s", record.record_id)
 
-                    # Исправлено: именованные плейсхолдеры
                     msg = _get_localized_message(
                         hass, "history_maps_loaded", 
                         "Loaded {count} history maps",
@@ -670,9 +714,12 @@ async def _async_register_services(hass: HomeAssistant):
         keep_last = call.data.get("keep_last", 50)
         _LOGGER.info("Service call: cleanup_history_maps (keep_last=%s)", keep_last)
 
-        for entry_id, coord in hass.data[DOMAIN].items():
-            if hasattr(coord, 'clean_history_sensor'):
-                sensor = coord.clean_history_sensor
+        for entry_id, entry_data in hass.data[DOMAIN].items():
+            if entry_id == 'services_registered':
+                continue
+            coordinator = entry_data.get('coordinator')
+            if coordinator and hasattr(coordinator, 'clean_history_sensor'):
+                sensor = coordinator.clean_history_sensor
                 await sensor.async_cleanup_old_maps()
 
                 msg = _get_localized_message(
@@ -688,9 +735,12 @@ async def _async_register_services(hass: HomeAssistant):
         """Clean up all history maps except the current one."""
         _LOGGER.info("Service call: cleanup_all_except_current")
 
-        for entry_id, coord in hass.data[DOMAIN].items():
-            if hasattr(coord, 'clean_history_sensor'):
-                sensor = coord.clean_history_sensor
+        for entry_id, entry_data in hass.data[DOMAIN].items():
+            if entry_id == 'services_registered':
+                continue
+            coordinator = entry_data.get('coordinator')
+            if coordinator and hasattr(coordinator, 'clean_history_sensor'):
+                sensor = coordinator.clean_history_sensor
                 await sensor.async_cleanup_all_except_current()
 
                 msg = _get_localized_message(
@@ -712,9 +762,12 @@ async def _async_register_services(hass: HomeAssistant):
 
         _LOGGER.info("Neatsvor vacuum zone clean alias called: entity=%s, zones=%s", entity_id, zones)
 
-        for entry_id, coord in hass.data[DOMAIN].items():
-            if hasattr(coord, 'vacuum') and coord.vacuum:
-                vacuum = coord.vacuum
+        for entry_id, entry_data in hass.data[DOMAIN].items():
+            if entry_id == 'services_registered':
+                continue
+            coordinator = entry_data.get('coordinator')
+            if coordinator and hasattr(coordinator, 'vacuum') and coordinator.vacuum:
+                vacuum = coordinator.vacuum
 
                 for zone in zones:
                     if len(zone) == 4:
@@ -729,7 +782,7 @@ async def _async_register_services(hass: HomeAssistant):
                     _LOGGER.info("Zone: (%s,%s)-(%s,%s) x%s", x1, y1, x2, y2, repeats)
                     await vacuum.zone_clean(x1, y1, x2, y2, repeats)
 
-                await coord.async_request_refresh()
+                await coordinator.async_request_refresh()
                 _LOGGER.info("Zone clean commands sent")
                 return
 
@@ -763,13 +816,7 @@ async def _async_register_services(hass: HomeAssistant):
     hass.services.async_register(DOMAIN, "cleanup_all_except_current", async_cleanup_all_except_current)
 
     # --- ZONE CLEAN SERVICE ---
-    # NEW: Register the service under the integration's own name
     hass.services.async_register(DOMAIN, "vacuum_clean_zone", async_vacuum_zone_clean)
-
-    # ОТКЛЮЧЕНО: Регистрация сервиса под именем xiaomi_miio
-    # Это может конфликтовать с официальной интеграцией Xiaomi Miio
-    # Если вам нужна обратная совместимость, используйте neatsvor.vacuum_clean_zone
-    # hass.services.async_register("xiaomi_miio", "vacuum_clean_zone", async_vacuum_zone_clean)
 
     # Subscribe to events
     hass.bus.async_listen("neatsvor_history_map_updated", handle_history_map_updated)
@@ -782,26 +829,43 @@ async def _async_register_services(hass: HomeAssistant):
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    global _initialized
-
+    
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
-    if unload_ok and entry.entry_id in hass.data[DOMAIN]:
-        coordinator = hass.data[DOMAIN][entry.entry_id]
-        if coordinator and hasattr(coordinator, 'vacuum'):
-            await coordinator.vacuum.disconnect()
+    if unload_ok and entry.entry_id in hass.data.get(DOMAIN, {}):
+        entry_data = hass.data[DOMAIN][entry.entry_id]
+        
+        # Disconnect vacuum
+        if 'vacuum' in entry_data:
+            try:
+                await entry_data['vacuum'].disconnect()
+                _LOGGER.info("Vacuum disconnected for entry %s", entry.entry_id)
+            except Exception as e:
+                _LOGGER.error("Error disconnecting vacuum for entry %s: %s", entry.entry_id, e)
+        
+        # Remove entry data
         hass.data[DOMAIN].pop(entry.entry_id)
+        _LOGGER.info("Entry %s unloaded", entry.entry_id)
 
-    _initialized = False
+    # If no entries left, reset services_registered flag
+    entries = [k for k in hass.data.get(DOMAIN, {}) if k != 'services_registered']
+    if not entries:
+        hass.data[DOMAIN]['services_registered'] = False
+        _LOGGER.info("All entries unloaded, services unregistered")
+
     return unload_ok
 
 
-async def async_close_shared_vacuum():
-    """Close the shared vacuum instance when unloading the entire integration."""
-    global _shared_vacuum, _shared_config, _initialized
-    if _shared_vacuum:
-        await _shared_vacuum.disconnect()
-        _shared_vacuum = None
-        _shared_config = None
-        _initialized = False
-        _LOGGER.info("Shared vacuum closed")
+async def _async_close_all_vacuums(event):
+    """Close all vacuum instances when HA stops."""
+    _LOGGER.info("Closing all Neatsvor vacuum instances")
+    
+    for entry_id, entry_data in hass.data.get(DOMAIN, {}).items():
+        if entry_id == 'services_registered':
+            continue
+        if 'vacuum' in entry_data:
+            try:
+                await entry_data['vacuum'].disconnect()
+                _LOGGER.info("Vacuum closed for entry %s", entry_id)
+            except Exception as e:
+                _LOGGER.error("Error closing vacuum for entry %s: %s", entry_id, e)

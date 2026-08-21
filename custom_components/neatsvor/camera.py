@@ -24,7 +24,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Neatsvor cameras."""
-    coordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator = hass.data[DOMAIN][entry.entry_id]['coordinator']
 
     entities = []
 
@@ -48,12 +48,13 @@ async def async_setup_entry(
 
 class NeatsvorLiveCamera(CoordinatorEntity, Camera):
     _attr_has_entity_name = True
-    _attr_unique_id = "neatsvor_live_camera"
     _attr_translation_key = "live_camera"
 
     def __init__(self, coordinator):
         super().__init__(coordinator)
         Camera.__init__(self)
+        device_id = coordinator.device_id
+        self._attr_unique_id = f"neatsvor_{device_id}_live_camera"
         self._attr_device_info = coordinator.device_info
         self._attr_icon = "mdi:map"
         self._attr_frame_interval = 1.0
@@ -165,12 +166,13 @@ class NeatsvorLiveCamera(CoordinatorEntity, Camera):
 
 class NeatsvorCloudMapCamera(CoordinatorEntity, Camera):
     _attr_has_entity_name = True
-    _attr_unique_id = "neatsvor_cloud_map_camera"
     _attr_translation_key = "cloud_map_camera"
 
     def __init__(self, coordinator):
         super().__init__(coordinator)
         Camera.__init__(self)
+        device_id = coordinator.device_id
+        self._attr_unique_id = f"neatsvor_{device_id}_cloud_map_camera"
         self._attr_device_info = coordinator.device_info
         self._attr_icon = "mdi:cloud-outline"
         self._attr_frame_interval = 0.5
@@ -405,12 +407,13 @@ class NeatsvorCloudMapCamera(CoordinatorEntity, Camera):
 
 class NeatsvorCleanHistoryCamera(Camera, CoordinatorEntity):
     _attr_has_entity_name = True
-    _attr_unique_id = "neatsvor_clean_history_camera"
     _attr_translation_key = "clean_history_camera"
 
     def __init__(self, coordinator):
         super().__init__()
         CoordinatorEntity.__init__(self, coordinator)
+        device_id = coordinator.device_id
+        self._attr_unique_id = f"neatsvor_{device_id}_clean_history_camera"
         self._attr_device_info = coordinator.device_info
         self._attr_icon = "mdi:history"
         # Name will be taken from translations via entity_id

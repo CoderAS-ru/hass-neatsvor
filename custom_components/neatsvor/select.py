@@ -26,7 +26,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Neatsvor select entities."""
-    coordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator = hass.data[DOMAIN][entry.entry_id]['coordinator']
 
     hass.async_create_task(
         _async_setup_selects_later(coordinator, async_add_entities)
@@ -60,6 +60,7 @@ async def _async_setup_selects_later(coordinator, async_add_entities):
     _LOGGER.debug("Available DP codes: %s", all_codes)
 
     new_entities = []
+    device_id = coordinator.device_id
 
     # Water level (DP 10)
     water_dp = dp_manager.get_by_code('water_tank')
@@ -74,6 +75,7 @@ async def _async_setup_selects_later(coordinator, async_add_entities):
                 options=options,
                 value_map={v: k for k, v in water_dp.enum.items()},
                 localize_func=get_localized_water_level,
+                device_id=device_id,
             ))
             _LOGGER.info("Added water level: %s", options)
 
@@ -90,6 +92,7 @@ async def _async_setup_selects_later(coordinator, async_add_entities):
                 options=options,
                 value_map={v: k for k, v in fan_dp.enum.items()},
                 localize_func=get_localized_fan_speed,
+                device_id=device_id,
             ))
             _LOGGER.info("Added fan speed: %s", options)
 
@@ -123,23 +126,24 @@ async def _async_setup_selects_later(coordinator, async_add_entities):
             options=display_options,
             value_map=value_map,
             localize_func=get_localized_clean_mode,
+            device_id=device_id,
         ))
         _LOGGER.info("Added clean mode: %s", display_options)
 
     # Room selection
     room_clean_dp = dp_manager.get_by_code('room_clean')
     if room_clean_dp:
-        new_entities.append(NeatsvorRoomSelect(coordinator))
+        new_entities.append(NeatsvorRoomSelect(coordinator, device_id))
         _LOGGER.info("Added room selection")
 
-        # Cloud map selection
+    # Cloud map selection
     if hasattr(coordinator.vacuum, 'cloud_maps'):
-        new_entities.append(NeatsvorCloudMapSelect(coordinator))
+        new_entities.append(NeatsvorCloudMapSelect(coordinator, device_id))
         _LOGGER.info("Added cloud map selection")
 
     # Clean history selection
     if hasattr(coordinator.vacuum, 'clean_history'):
-        new_entities.append(NeatsvorCleanHistorySelect(coordinator))
+        new_entities.append(NeatsvorCleanHistorySelect(coordinator, device_id))
         _LOGGER.info("Added clean history selection")
 
     if new_entities:
@@ -156,7 +160,7 @@ class NeatsvorEnumSelect(CoordinatorEntity, SelectEntity):
 
     def __init__(self, coordinator, dp_id: int, translation_key: str, icon: str,
                  options: List[str], value_map: Dict[str, int],
-                 localize_func=None):
+                 localize_func=None, device_id: int = None):
         super().__init__(coordinator)
         self._dp_id = dp_id
         self._value_map = value_map
@@ -164,8 +168,9 @@ class NeatsvorEnumSelect(CoordinatorEntity, SelectEntity):
         self._initial_value_sent = False
         self._localize_func = localize_func
         self._raw_options = options  # Сохраняем исходные опции
+        self._device_id = device_id or coordinator.device_id
 
-        self._attr_unique_id = f"neatsvor_{translation_key}"
+        self._attr_unique_id = f"neatsvor_{self._device_id}_{translation_key}"
         self._attr_translation_key = translation_key
         self._attr_device_info = coordinator.device_info
         self._attr_icon = icon
@@ -319,9 +324,10 @@ class NeatsvorRoomSelect(CoordinatorEntity, SelectEntity):
     _attr_has_entity_name = True
     _attr_translation_key = "room_select"
 
-    def __init__(self, coordinator):
+    def __init__(self, coordinator, device_id: int = None):
         super().__init__(coordinator)
-        self._attr_unique_id = "neatsvor_room_select"
+        self._device_id = device_id or coordinator.device_id
+        self._attr_unique_id = f"neatsvor_{self._device_id}_room_select"
         self._attr_device_info = coordinator.device_info
         self._attr_icon = "mdi:floor-plan"
 
@@ -336,8 +342,7 @@ class NeatsvorRoomSelect(CoordinatorEntity, SelectEntity):
         if coordinator.vacuum:
             coordinator.vacuum.on_map(self._handle_map_update)
 
-        asyncio.create_task(self._load_rooms_from_history())
-
+        # Используем async_added_to_hass вместо create_task в __init__
         coordinator.room_select = self
 
     def _get_saved_value(self) -> Optional[str]:
@@ -349,6 +354,9 @@ class NeatsvorRoomSelect(CoordinatorEntity, SelectEntity):
     async def async_added_to_hass(self) -> None:
         """When entity is added to hass."""
         await super().async_added_to_hass()
+        
+        # Загружаем комнаты после добавления в hass
+        await self._load_rooms_from_history()
 
         for i in range(10):
             if self._attr_options and self._attr_options != ["⏳ Loading..."]:
@@ -479,9 +487,10 @@ class NeatsvorCloudMapSelect(CoordinatorEntity, SelectEntity):
     _attr_has_entity_name = True
     _attr_translation_key = "cloud_map_select"
 
-    def __init__(self, coordinator):
+    def __init__(self, coordinator, device_id: int = None):
         super().__init__(coordinator)
-        self._attr_unique_id = "neatsvor_cloud_map_select"
+        self._device_id = device_id or coordinator.device_id
+        self._attr_unique_id = f"neatsvor_{self._device_id}_cloud_map_select"
         self._attr_device_info = coordinator.device_info
         self._attr_icon = "mdi:map-search"
         self._attr_options = ["⏳ Loading..."]
@@ -638,9 +647,10 @@ class NeatsvorCleanHistorySelect(CoordinatorEntity, SelectEntity):
     _attr_has_entity_name = True
     _attr_translation_key = "clean_history_select"
 
-    def __init__(self, coordinator):
+    def __init__(self, coordinator, device_id: int = None):
         super().__init__(coordinator)
-        self._attr_unique_id = "neatsvor_clean_history_select"
+        self._device_id = device_id or coordinator.device_id
+        self._attr_unique_id = f"neatsvor_{self._device_id}_clean_history_select"
         self._attr_device_info = coordinator.device_info
         self._attr_icon = "mdi:history"
         self._attr_options = ["⏳ Loading..."]

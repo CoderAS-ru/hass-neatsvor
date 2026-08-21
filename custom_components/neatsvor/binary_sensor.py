@@ -22,7 +22,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Neatsvor binary sensors."""
-    coordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator = hass.data[DOMAIN][entry.entry_id]['coordinator']
 
     entities = [
         NeatsvorOnlineSensor(coordinator),
@@ -37,12 +37,13 @@ async def async_setup_entry(
 
 class NeatsvorOnlineSensor(CoordinatorEntity, BinarySensorEntity):
     _attr_has_entity_name = True
-    _attr_unique_id = "neatsvor_online"
     _attr_translation_key = "online"
     _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
 
     def __init__(self, coordinator):
         super().__init__(coordinator)
+        device_id = coordinator.device_id
+        self._attr_unique_id = f"neatsvor_{device_id}_online"
         self._attr_device_info = coordinator.device_info
         self._attr_icon = "mdi:satellite-uplink"
 
@@ -61,12 +62,13 @@ class NeatsvorOnlineSensor(CoordinatorEntity, BinarySensorEntity):
 
 class NeatsvorChargingSensor(CoordinatorEntity, BinarySensorEntity):
     _attr_has_entity_name = True
-    _attr_unique_id = "neatsvor_charging"
     _attr_translation_key = "charging"
     _attr_device_class = BinarySensorDeviceClass.BATTERY_CHARGING
 
     def __init__(self, coordinator):
         super().__init__(coordinator)
+        device_id = coordinator.device_id
+        self._attr_unique_id = f"neatsvor_{device_id}_charging"
         self._attr_device_info = coordinator.device_info
         self._attr_icon = "mdi:battery-charging"
 
@@ -93,12 +95,13 @@ class NeatsvorChargingSensor(CoordinatorEntity, BinarySensorEntity):
 
 class NeatsvorDustBinFullSensor(CoordinatorEntity, BinarySensorEntity):
     _attr_has_entity_name = True
-    _attr_unique_id = "neatsvor_dust_bin"
     _attr_translation_key = "dust_bin"
     _attr_device_class = BinarySensorDeviceClass.PROBLEM
 
     def __init__(self, coordinator):
         super().__init__(coordinator)
+        device_id = coordinator.device_id
+        self._attr_unique_id = f"neatsvor_{device_id}_dust_bin"
         self._attr_device_info = coordinator.device_info
         self._attr_icon = "mdi:delete-alert"
 
@@ -119,12 +122,13 @@ class NeatsvorDustBinFullSensor(CoordinatorEntity, BinarySensorEntity):
 
 class NeatsvorMopAttachedSensor(CoordinatorEntity, BinarySensorEntity):
     _attr_has_entity_name = True
-    _attr_unique_id = "neatsvor_mop_attached"
     _attr_translation_key = "mop_attached"
     _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
 
     def __init__(self, coordinator):
         super().__init__(coordinator)
+        device_id = coordinator.device_id
+        self._attr_unique_id = f"neatsvor_{device_id}_mop_attached"
         self._attr_device_info = coordinator.device_info
         self._attr_icon = "mdi:spray"
 
