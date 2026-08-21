@@ -1,64 +1,64 @@
 filter:
   include_entities:
-    - vacuum.s700_smart_vacuum
-    - sensor.s700_hepa_filter
-    - sensor.s700_main_brush
-    - sensor.s700_side_brush
-    - sensor.s700_total_clean_area
-    - sensor.s700_total_clean_time
-    - sensor.s700_last_clean_area
-    - sensor.s700_last_clean_duration
+    - vacuum.neatsvor_<device_id>_vacuum
+    - sensor.neatsvor_<device_id>_filter
+    - sensor.neatsvor_<device_id>_main_brush
+    - sensor.neatsvor_<device_id>_side_brush
+    - sensor.neatsvor_<device_id>_total_clean_area
+    - sensor.neatsvor_<device_id>_total_clean_time
+    - sensor.neatsvor_<device_id>_last_clean_area
+    - sensor.neatsvor_<device_id>_last_clean_duration
 
-entity_config:        
-#====== s700_smart_vacuum ==========
+entity_config:
+#====== neatsvor_<device_id>_vacuum ==========
 
-  vacuum.s700_smart_vacuum:
+  vacuum.neatsvor_<device_id>_vacuum:
     name: Пылесос Neatsvor
     properties:
       - type: battery_level
-        entity: vacuum.s700_smart_vacuum
+        entity: vacuum.neatsvor_<device_id>_vacuum
         attribute: battery_level
-  
-  sensor.s700_hepa_filter:
+
+  sensor.neatsvor_<device_id>_filter:
     name: HEPA фильтр
     properties:
       - type: float.meter
-        entity: sensor.s700_hepa_filter
+        entity: sensor.neatsvor_<device_id>_filter
 
-  sensor.s700_main_brush:
+  sensor.neatsvor_<device_id>_main_brush:
     name: Основная щётка
     properties:
       - type: float.meter
-        entity: sensor.s700_main_brush
+        entity: sensor.neatsvor_<device_id>_main_brush
 
-  sensor.s700_side_brush:
+  sensor.neatsvor_<device_id>_side_brush:
     name: Боковая щётка
     properties:
       - type: float.meter
-        entity: sensor.s700_side_brush
+        entity: sensor.neatsvor_<device_id>_side_brush
 
-  sensor.s700_total_clean_area:
+  sensor.neatsvor_<device_id>_total_clean_area:
     name: Общая площадь уборки
     properties:
       - type: float.meter
-        entity: sensor.s700_total_clean_area
+        entity: sensor.neatsvor_<device_id>_total_clean_area
 
-  sensor.s700_total_clean_time:
+  sensor.neatsvor_<device_id>_total_clean_time:
     name: Общее время уборки
     properties:
       - type: float.meter
-        entity: sensor.s700_total_clean_time
+        entity: sensor.neatsvor_<device_id>_total_clean_time
 
-  sensor.s700_last_clean_area:
+  sensor.neatsvor_<device_id>_last_clean_area:
     name: Площадь последней уборки
     properties:
       - type: float.meter
-        entity: sensor.s700_last_clean_area
+        entity: sensor.neatsvor_<device_id>_last_clean_area
 
-  sensor.s700_last_clean_duration:
+  sensor.neatsvor_<device_id>_last_clean_duration:
     name: Время последней уборки
     properties:
       - type: float.meter
-        entity: sensor.s700_last_clean_duration
+        entity: sensor.neatsvor_<device_id>_last_clean_duration
 
-#====== s700_smart_vacuum ==========
+#====== neatsvor_<device_id>_vacuum ==========
