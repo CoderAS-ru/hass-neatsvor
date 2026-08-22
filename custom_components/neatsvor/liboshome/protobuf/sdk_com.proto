@@ -25,9 +25,13 @@ message MqttMsg {
 }
 
 message MqttMsgBody {
-    int32 int_value = 1;
-    bool bool_value = 2;
-    string string_value = 3;
+    oneof value {
+        int32 int_value = 1;
+        bool bool_value = 2;
+        string string_value = 3;
+        float float_value = 4;
+        bytes bytes_value = 5;
+    }
 }
 
 message Point {

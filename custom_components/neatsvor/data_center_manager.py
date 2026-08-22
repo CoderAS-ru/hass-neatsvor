@@ -11,14 +11,27 @@ _LOGGER = logging.getLogger(__name__)
 class DataCenterManager:
     """Manager for finding data centers by phone code using country2.db."""
 
+    # Разрешенные языки для подстановки в SQL
+    ALLOWED_LANGUAGES = {"en", "ru", "cn", "zh", "de", "es", "fr", "it", "ja", "ko", "pt"}
+
     def __init__(self, hass):
         """Initialize the manager."""
         self.hass = hass
-        # Путь к папке с БД в custom_components/neatsvor/db/
         self.db_path = os.path.join(
             hass.config.path("custom_components/neatsvor"), "db"
         )
         _LOGGER.debug("DataCenterManager db_path: %s", self.db_path)
+        
+    def _sanitize_language(self, language: str) -> str:
+        """Sanitize language for SQL table name."""
+        # Берем только основную часть (en-US -> en)
+        lang = language.split('-')[0] if '-' in language else language
+        # Проверяем, что язык в allowlist
+        if lang in self.ALLOWED_LANGUAGES:
+            return lang
+        # По умолчанию английский
+        _LOGGER.warning("Unknown language '%s', falling back to 'en'", language)
+        return "en"
         
     def get_data_center_by_phone_code(self, phone_code: str, language: str = "en") -> Optional[Dict[str, Any]]:
         """
@@ -89,12 +102,16 @@ class DataCenterManager:
             # 3. Получаем MQTT конфигурацию
             mqtt_config = self._get_mqtt_config(dc_code, data_center_id)
             
-            # 4. Получаем локализованное имя страны
+            # 4. Получаем локализованное имя страны (с валидацией языка)
             country_name_localized = region_name
             try:
+                # Санитайзим язык перед подстановкой в SQL
+                safe_lang = self._sanitize_language(language)
+                
                 # Пробуем разные варианты языковых таблиц
-                lang_variants = [language, language.split('-')[0] if '-' in language else language, "en"]
+                lang_variants = [safe_lang, "en"]
                 for lang in lang_variants:
+                    # ВАЖНО: lang уже проверен через allowlist
                     table_name = f"region_language_{lang}"
                     try:
                         cursor.execute(f"""
@@ -107,8 +124,14 @@ class DataCenterManager:
                         if lang_row and lang_row[0]:
                             country_name_localized = lang_row[0]
                             break
-                    except:
+                    except sqlite3.OperationalError as e:
+                        # Таблица может не существовать для данного языка
+                        _LOGGER.debug("Table %s not found: %s", table_name, e)
                         continue
+                    except Exception as e:
+                        _LOGGER.debug("Error querying %s: %s", table_name, e)
+                        continue
+                        
             except Exception as e:
                 _LOGGER.debug("Could not get localized name: %s", e)
             

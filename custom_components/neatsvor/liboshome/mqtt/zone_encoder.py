@@ -64,9 +64,9 @@ async def encode_zone_clean_command(encoder, x1: int, y1: int, x2: int, y2: int,
         p4.x = final_x1
         p4.y = final_y2
 
-        # Упаковываем
+        # Упаковываем (без второго аргумента — используется дефолтный префикс)
         body_any = any_pb2.Any()
-        body_any.Pack(zone_clean, "type.googleapis.com/sweeper.ZoneClean")
+        body_any.Pack(zone_clean)
 
         command = encoder.create_dp_command(32, body_any.SerializeToString())
         return command
@@ -123,7 +123,7 @@ async def encode_multiple_zones_command(encoder, zones: List[Tuple[int, int, int
             p4.y = final_y2
 
         body_any = any_pb2.Any()
-        body_any.Pack(zone_clean, "type.googleapis.com/sweeper.ZoneClean")
+        body_any.Pack(zone_clean)
 
         return encoder.create_dp_command(32, body_any.SerializeToString())
 

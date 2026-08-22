@@ -67,7 +67,7 @@ def decode_dp_payload(payload: bytes) -> Iterator[Tuple[int, Any]]:
                 body = bvsdk.MqttMsgBody()
                 if body_any.Unpack(body):
                     value = _extract_value_from_body(body)
-                    if value is not None:  # IMPORTANT: skip None values
+                    if value is not None:
                         yield (dp_id, value)
                     else:
                         _LOGGER.debug("DP %s has None value, skipping", dp_id)
@@ -84,16 +84,47 @@ def _extract_value_from_body(body: bvsdk.MqttMsgBody) -> Any:
     """
     Extract value from body message.
     
-    Использует безопасный подход без HasField() для совместимости с proto3.
-    В proto3 поля не помечены как optional и не находятся в oneof,
-    поэтому HasField() всегда бросает ValueError.
+    Использует WhichOneof() для определения реально установленного поля.
+    В proto3 без oneof/optional поля HasField() недоступен, но WhichOneof()
+    работает корректно для oneof-полей.
     """
     try:
-        # Проверяем наличие атрибутов через hasattr и читаем значения
-        # Если поле не установлено, protobuf возвращает значение по умолчанию
-        # (0 для int, False для bool, "" для string)
+        # Используем WhichOneof для определения установленного поля
+        # (для oneof-полей это единственный правильный способ)
+        field_name = body.WhichOneof('value')
         
-        # Пытаемся определить тип по наличию атрибута
+        if field_name == 'int_value':
+            return body.int_value
+        elif field_name == 'bool_value':
+            return body.bool_value
+        elif field_name == 'string_value':
+            return body.string_value
+        elif field_name == 'float_value':
+            return body.float_value
+        elif field_name == 'bytes_value':
+            return body.bytes_value
+        elif field_name is None:
+            # Если поле не установлено, возвращаем None
+            _LOGGER.debug("No field set in body")
+            return None
+            
+    except Exception as e:
+        # Если WhichOneof недоступен (старая версия protobuf),
+        # пробуем альтернативный подход
+        _LOGGER.debug("WhichOneof failed, trying fallback: %s", e)
+        return _extract_value_fallback(body)
+
+    return None
+
+
+def _extract_value_fallback(body: bvsdk.MqttMsgBody) -> Any:
+    """
+    Fallback для старых версий protobuf, где нет WhichOneof.
+    Проверяет наличие атрибутов через hasattr.
+    """
+    try:
+        # Проверяем наличие каждого поля
+        # В старых версиях hasattr работает корректно
         if hasattr(body, 'int_value'):
             return body.int_value
         elif hasattr(body, 'bool_value'):
@@ -104,10 +135,9 @@ def _extract_value_from_body(body: bvsdk.MqttMsgBody) -> Any:
             return body.float_value
         elif hasattr(body, 'bytes_value'):
             return body.bytes_value
-            
     except Exception as e:
-        _LOGGER.debug("Error extracting value: %s", e)
-
+        _LOGGER.debug("Fallback extraction failed: %s", e)
+    
     return None
 
 

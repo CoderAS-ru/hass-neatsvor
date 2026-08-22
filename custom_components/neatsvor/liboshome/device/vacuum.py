@@ -505,7 +505,7 @@ class NeatsvorVacuum:
             room_data.mode = 2
 
             body_any = any_pb2.Any()
-            body_any.Pack(room_data, "type.googleapis.com/sweeper.Rooms")
+            body_any.Pack(room_data)
 
             command_bytes = self._encoder.create_dp_command(
                 self.DP_ROOM_CLEAN,
@@ -535,7 +535,7 @@ class NeatsvorVacuum:
             use_map.md5 = ""
 
             body_any = any_pb2.Any()
-            body_any.Pack(use_map, "type.googleapis.com/sweeper.UseMap")
+            body_any.Pack(use_map)
 
             await self.send_raw_command(30, body_any.SerializeToString())
             _LOGGER.info("Reference map save command sent")
@@ -568,7 +568,7 @@ class NeatsvorVacuum:
                 use_map.md5 = map_md5
 
             body_any = any_pb2.Any()
-            body_any.Pack(use_map, "type.googleapis.com/sweeper.UseMap")
+            body_any.Pack(use_map)
 
             command_bytes = self._encoder.create_dp_command(30, body_any.SerializeToString())
             await self._command_sender.publish_command(command_bytes)
@@ -1042,7 +1042,7 @@ class NeatsvorVacuum:
             _LOGGER.info("Rooms to clean: %s (IDs: %s)", room_names, room_ids)
 
             body_any = any_pb2.Any()
-            body_any.Pack(room_data, "type.googleapis.com/sweeper.Rooms")
+            body_any.Pack(room_data)
 
             serialized = body_any.SerializeToString()
             _LOGGER.debug("RoomAttrs serialized size: %s bytes", len(serialized))

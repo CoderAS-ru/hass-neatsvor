@@ -157,6 +157,22 @@ class NeatsvorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     # Сбрасываем флаг
                     vacuum._test_mode = False
 
+            except TimeoutError as err:
+                _LOGGER.error("Connection timeout: %s", err)
+                errors["base"] = "cannot_connect"
+                
+            except ConnectionError as err:
+                _LOGGER.error("Connection error: %s", err)
+                errors["base"] = "cannot_connect"
+                
+            except OSError as err:
+                if "DNS" in str(err) or "Timeout" in str(err) or "getaddrinfo" in str(err):
+                    _LOGGER.error("Network error: %s", err)
+                    errors["base"] = "cannot_connect"
+                else:
+                    _LOGGER.error("OS error: %s", err)
+                    errors["base"] = "invalid_auth"
+                    
             except Exception as err:
                 error_msg = str(err)
                 _LOGGER.error("Connection error: %s", err)
@@ -164,6 +180,8 @@ class NeatsvorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 # Проверяем конкретные ошибки
                 if "90104" in error_msg or "Login failed" in error_msg:
                     errors["base"] = "account_in_use"
+                elif "DNS" in error_msg or "Timeout" in error_msg or "getaddrinfo" in error_msg:
+                    errors["base"] = "cannot_connect"
                 else:
                     errors["base"] = "invalid_auth"
 
