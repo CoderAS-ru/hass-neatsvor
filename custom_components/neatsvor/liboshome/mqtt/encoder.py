@@ -90,7 +90,7 @@ class NeatsvorEncoder:
                 # If it's already serialized bytes, try to parse as Any
                 try:
                     body_any.ParseFromString(value)
-                except:
+                except Exception:
                     # If parsing fails, create new Any with these bytes
                     body_any.value = value
                     body_any.type_url = "type.googleapis.com/sweeper.UseMap"
