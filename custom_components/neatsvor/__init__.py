@@ -2,11 +2,12 @@
 
 import logging
 import asyncio
-from typing import Optional
+from typing import Optional, Union, List
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall
 from pathlib import Path
+from homeassistant.helpers import config_validation as cv
 
 from .const import (
     DOMAIN, 
@@ -30,6 +31,17 @@ from .liboshome.config import NeatsvorConfig, RestConfig, MQTTConfig, Credential
 from .liboshome.device.vacuum import NeatsvorVacuum
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _normalize_entity_ids(entity_id: Union[str, List[str], None]) -> List[str]:
+    """Normalize entity_id to list of strings."""
+    if entity_id is None:
+        return []
+    if isinstance(entity_id, str):
+        return [entity_id]
+    if isinstance(entity_id, list):
+        return entity_id
+    return []
 
 
 async def _migrate_old_config(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -323,11 +335,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     }
     hass.data[DOMAIN][entry.entry_id] = entry_data
 
+    # =====================================================
+    # ВАЖНО: Сначала дожидаемся готовности координатора,
+    # чтобы device_id был заполнен до создания сущностей
+    # =====================================================
+    await coordinator.async_config_entry_first_refresh()
+
     _LOGGER.info("Registering platforms: %s", PLATFORMS)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-
-    # Start coordinator refresh
-    asyncio.create_task(coordinator.async_config_entry_first_refresh())
 
     # Register services only once globally
     if not hass.data[DOMAIN].get('services_registered'):
@@ -353,6 +368,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     return True
 
+
 async def _async_register_services(hass: HomeAssistant):
     """Register integration services."""
     from homeassistant.helpers import entity_platform
@@ -364,27 +380,32 @@ async def _async_register_services(hass: HomeAssistant):
             return None
         return entry_data.get('coordinator')
 
-    async def _get_coordinator_by_entity_id(entity_id: str):
-        """Get coordinator by entity_id."""
-        entry_id = _get_entry_id_from_entity_id(hass, entity_id)
-        if entry_id:
-            entry_data = hass.data[DOMAIN].get(entry_id)
-            if entry_data:
-                return entry_data.get('coordinator')
-        return None
+    async def _get_coordinator_by_entity_ids(entity_ids: List[str]):
+        """Get coordinators by entity_ids."""
+        coordinators = []
+        for entity_id in entity_ids:
+            entry_id = _get_entry_id_from_entity_id(hass, entity_id)
+            if entry_id:
+                entry_data = hass.data[DOMAIN].get(entry_id)
+                if entry_data:
+                    coordinator = entry_data.get('coordinator')
+                    if coordinator and coordinator not in coordinators:
+                        coordinators.append(coordinator)
+        return coordinators
 
     async def async_request_all_data(call: ServiceCall) -> None:
         """Request all data as the official app does."""
-        entity_id = call.data.get("entity_id")
-        _LOGGER.info("Service call: request_all_data for %s", entity_id)
+        entity_ids = _normalize_entity_ids(call.data.get("entity_id"))
+        _LOGGER.info("Service call: request_all_data for %s", entity_ids)
         
-        if entity_id:
-            coordinator = await _get_coordinator_by_entity_id(entity_id)
-            if coordinator and hasattr(coordinator, 'vacuum') and coordinator.vacuum:
-                await coordinator.vacuum.request_all_data()
-                await coordinator.async_request_refresh()
-                _LOGGER.info("Data requested for %s", entity_id)
-                return
+        if entity_ids:
+            coordinators = await _get_coordinator_by_entity_ids(entity_ids)
+            for coordinator in coordinators:
+                if coordinator and hasattr(coordinator, 'vacuum') and coordinator.vacuum:
+                    await coordinator.vacuum.request_all_data()
+                    await coordinator.async_request_refresh()
+                    _LOGGER.info("Data requested for %s", entity_ids)
+            return
         
         # Fallback: send to all entries
         for entry_id, entry_data in hass.data[DOMAIN].items():
@@ -398,16 +419,17 @@ async def _async_register_services(hass: HomeAssistant):
 
     async def async_request_map(call: ServiceCall) -> None:
         """Request the current map."""
-        entity_id = call.data.get("entity_id")
-        _LOGGER.info("Service call: request_map for %s", entity_id)
+        entity_ids = _normalize_entity_ids(call.data.get("entity_id"))
+        _LOGGER.info("Service call: request_map for %s", entity_ids)
         
-        if entity_id:
-            coordinator = await _get_coordinator_by_entity_id(entity_id)
-            if coordinator and hasattr(coordinator, 'vacuum') and coordinator.vacuum:
-                await coordinator.vacuum.request_map()
-                await coordinator.async_request_refresh()
-                _LOGGER.info("Map requested for %s", entity_id)
-                return
+        if entity_ids:
+            coordinators = await _get_coordinator_by_entity_ids(entity_ids)
+            for coordinator in coordinators:
+                if coordinator and hasattr(coordinator, 'vacuum') and coordinator.vacuum:
+                    await coordinator.vacuum.request_map()
+                    await coordinator.async_request_refresh()
+                    _LOGGER.info("Map requested for %s", entity_ids)
+            return
         
         for entry_id, entry_data in hass.data[DOMAIN].items():
             if entry_id in ['services_registered', 'stop_handler_registered']:
@@ -420,16 +442,17 @@ async def _async_register_services(hass: HomeAssistant):
 
     async def async_build_map(call: ServiceCall) -> None:
         """Perform a fast map build."""
-        entity_id = call.data.get("entity_id")
-        _LOGGER.info("Service call: build_map for %s", entity_id)
+        entity_ids = _normalize_entity_ids(call.data.get("entity_id"))
+        _LOGGER.info("Service call: build_map for %s", entity_ids)
         
-        if entity_id:
-            coordinator = await _get_coordinator_by_entity_id(entity_id)
-            if coordinator and hasattr(coordinator, 'vacuum') and coordinator.vacuum:
-                await coordinator.vacuum.build_map()
-                await coordinator.async_request_refresh()
-                _LOGGER.info("Map building started for %s", entity_id)
-                return
+        if entity_ids:
+            coordinators = await _get_coordinator_by_entity_ids(entity_ids)
+            for coordinator in coordinators:
+                if coordinator and hasattr(coordinator, 'vacuum') and coordinator.vacuum:
+                    await coordinator.vacuum.build_map()
+                    await coordinator.async_request_refresh()
+                    _LOGGER.info("Map building started for %s", entity_ids)
+            return
         
         for entry_id, entry_data in hass.data[DOMAIN].items():
             if entry_id in ['services_registered', 'stop_handler_registered']:
@@ -442,16 +465,17 @@ async def _async_register_services(hass: HomeAssistant):
 
     async def async_empty_dust(call: ServiceCall) -> None:
         """Empty the dust bin."""
-        entity_id = call.data.get("entity_id")
-        _LOGGER.info("Service call: empty_dust for %s", entity_id)
+        entity_ids = _normalize_entity_ids(call.data.get("entity_id"))
+        _LOGGER.info("Service call: empty_dust for %s", entity_ids)
         
-        if entity_id:
-            coordinator = await _get_coordinator_by_entity_id(entity_id)
-            if coordinator and hasattr(coordinator, 'vacuum') and coordinator.vacuum:
-                await coordinator.vacuum.empty_dust()
-                await coordinator.async_request_refresh()
-                _LOGGER.info("Dust bin emptied for %s", entity_id)
-                return
+        if entity_ids:
+            coordinators = await _get_coordinator_by_entity_ids(entity_ids)
+            for coordinator in coordinators:
+                if coordinator and hasattr(coordinator, 'vacuum') and coordinator.vacuum:
+                    await coordinator.vacuum.empty_dust()
+                    await coordinator.async_request_refresh()
+                    _LOGGER.info("Dust bin emptied for %s", entity_ids)
+            return
         
         for entry_id, entry_data in hass.data[DOMAIN].items():
             if entry_id in ['services_registered', 'stop_handler_registered']:
@@ -466,259 +490,263 @@ async def _async_register_services(hass: HomeAssistant):
         """Clean a room with its saved preset."""
         room_name = call.data.get("room")
         use_preset = call.data.get("use_preset", True)
-        entity_id = call.data.get("entity_id")
+        entity_ids = _normalize_entity_ids(call.data.get("entity_id"))
 
-        _LOGGER.info("Service call: clean_room_with_preset: %s for %s", room_name, entity_id)
+        _LOGGER.info("Service call: clean_room_with_preset: %s for %s", room_name, entity_ids)
         
-        # Try to find coordinator by entity_id first
-        coordinator = None
-        if entity_id:
-            coordinator = await _get_coordinator_by_entity_id(entity_id)
+        # Try to find coordinators by entity_ids first
+        coordinators = []
+        if entity_ids:
+            coordinators = await _get_coordinator_by_entity_ids(entity_ids)
         
         # If not found, use first available
-        if not coordinator:
+        if not coordinators:
             for entry_id, entry_data in hass.data[DOMAIN].items():
                 if entry_id in ['services_registered', 'stop_handler_registered']:
                     continue
                 coordinator = entry_data.get('coordinator')
                 if coordinator and hasattr(coordinator, 'vacuum') and coordinator.vacuum:
+                    coordinators.append(coordinator)
                     break
         
-        if not coordinator:
+        if not coordinators:
             _LOGGER.error("No coordinator found for clean_room_with_preset")
             return
             
-        if hasattr(coordinator, 'vacuum') and coordinator.vacuum:
-            rooms = await coordinator.vacuum.get_available_rooms()
-            room_map = {r['name']: r['id'] for r in rooms}
+        for coordinator in coordinators:
+            if hasattr(coordinator, 'vacuum') and coordinator.vacuum:
+                rooms = await coordinator.vacuum.get_available_rooms()
+                room_map = {r['name']: r['id'] for r in rooms}
 
-            if room_name in room_map:
-                if use_preset:
-                    await coordinator.vacuum.start_room_clean_with_preset([room_map[room_name]])
+                if room_name in room_map:
+                    if use_preset:
+                        await coordinator.vacuum.start_room_clean_with_preset([room_map[room_name]])
+                    else:
+                        await coordinator.vacuum.start_room_clean([room_map[room_name]])
+
+                    await coordinator.async_request_refresh()
+                    _LOGGER.info("Room cleaning started for: %s", room_name)
+                    
+                    msg = _get_localized_message(
+                        hass, "cleaning_room", 
+                        "Cleaning room: {room}", 
+                        room=room_name
+                    )
+                    hass.bus.async_fire("persistent_notification", {
+                        "message": msg,
+                        "title": "Neatsvor"
+                    })
                 else:
-                    await coordinator.vacuum.start_room_clean([room_map[room_name]])
-
-                await coordinator.async_request_refresh()
-                _LOGGER.info("Room cleaning started for: %s", room_name)
-                
-                msg = _get_localized_message(
-                    hass, "cleaning_room", 
-                    "Cleaning room: {room}", 
-                    room=room_name
-                )
-                hass.bus.async_fire("persistent_notification", {
-                    "message": msg,
-                    "title": "Neatsvor"
-                })
-            else:
-                msg = _get_localized_message(
-                    hass, "failed_clean_room", 
-                    "Failed to clean room {room}: room not found", 
-                    room=room_name,
-                    reason="room not found"
-                )
-                hass.bus.async_fire("persistent_notification", {
-                    "message": msg,
-                    "title": "Neatsvor Error"
-                })
+                    msg = _get_localized_message(
+                        hass, "failed_clean_room", 
+                        "Failed to clean room {room}: room not found", 
+                        room=room_name,
+                        reason="room not found"
+                    )
+                    hass.bus.async_fire("persistent_notification", {
+                        "message": msg,
+                        "title": "Neatsvor Error"
+                    })
 
     async def async_restore_reference_map(call: ServiceCall) -> None:
         """Restore room configuration from the reference map."""
-        entity_id = call.data.get("entity_id")
-        _LOGGER.info("Service call: restore_reference_map for %s", entity_id)
+        entity_ids = _normalize_entity_ids(call.data.get("entity_id"))
+        _LOGGER.info("Service call: restore_reference_map for %s", entity_ids)
 
-        # Find coordinator
-        coordinator = None
-        if entity_id:
-            coordinator = await _get_coordinator_by_entity_id(entity_id)
+        # Find coordinators
+        coordinators = []
+        if entity_ids:
+            coordinators = await _get_coordinator_by_entity_ids(entity_ids)
         
-        if not coordinator:
+        if not coordinators:
             for entry_id, entry_data in hass.data[DOMAIN].items():
                 if entry_id in ['services_registered', 'stop_handler_registered']:
                     continue
                 coordinator = entry_data.get('coordinator')
                 if coordinator and hasattr(coordinator, 'cloud_maps_sensor'):
+                    coordinators.append(coordinator)
                     break
         
-        if not coordinator or not hasattr(coordinator, 'cloud_maps_sensor'):
+        if not coordinators:
             _LOGGER.error("No cloud_maps_sensor found")
             return
             
-        sensor = coordinator.cloud_maps_sensor
-        reference_id = getattr(sensor, '_reference_map_id', None)
+        for coordinator in coordinators:
+            if not hasattr(coordinator, 'cloud_maps_sensor'):
+                continue
+                
+            sensor = coordinator.cloud_maps_sensor
+            reference_id = getattr(sensor, '_reference_map_id', None)
 
-        if not reference_id:
-            _LOGGER.warning("No reference map set")
+            if not reference_id:
+                _LOGGER.warning("No reference map set for %s", entity_ids)
+                msg = _get_localized_message(
+                    hass, "no_reference_map", 
+                    "No reference map has been set. Please set a reference map first."
+                )
+                hass.bus.async_fire("persistent_notification", {
+                    "message": msg,
+                    "title": "Neatsvor Cloud Maps"
+                })
+                return
+
+            reference_map = sensor.get_map_by_id(reference_id)
+            if not reference_map:
+                _LOGGER.error("Reference map %s not found", reference_id)
+                return
+
+            _LOGGER.info("Restoring from reference map: %s", reference_map.get('name'))
+            
+            if hasattr(coordinator, 'vacuum') and coordinator.vacuum:
+                try:
+                    await coordinator.vacuum.restore_reference_map(
+                        reference_id,
+                        reference_map.get('dev_map_url', ''),
+                        reference_map.get('dev_map_md5', '')
+                    )
+                    _LOGGER.info("Reference map restore command sent")
+                except Exception as e:
+                    _LOGGER.error("Error restoring reference map: %s", e)
+
             msg = _get_localized_message(
-                hass, "no_reference_map", 
-                "No reference map has been set. Please set a reference map first."
+                hass, "restored_from_reference", 
+                "Restored from reference map '{name}'\n🏠 Rooms: {rooms}\n📏 Area: {area}m²",
+                name=reference_map.get('name'),
+                rooms=reference_map.get('room_count'),
+                area=reference_map.get('area')
             )
             hass.bus.async_fire("persistent_notification", {
                 "message": msg,
                 "title": "Neatsvor Cloud Maps"
             })
-            return
-
-        reference_map = sensor.get_map_by_id(reference_id)
-        if not reference_map:
-            _LOGGER.error("Reference map %s not found", reference_id)
-            return
-
-        _LOGGER.info("Restoring from reference map: %s", reference_map.get('name'))
-        
-        # Actually restore the map using the vacuum's method
-        if hasattr(coordinator, 'vacuum') and coordinator.vacuum:
-            try:
-                await coordinator.vacuum.restore_reference_map(
-                    reference_id,
-                    reference_map.get('dev_map_url', ''),
-                    reference_map.get('dev_map_md5', '')
-                )
-                _LOGGER.info("Reference map restore command sent")
-            except Exception as e:
-                _LOGGER.error("Error restoring reference map: %s", e)
-
-        msg = _get_localized_message(
-            hass, "restored_from_reference", 
-            "Restored from reference map '{name}'\n🏠 Rooms: {rooms}\n📏 Area: {area}m²",
-            name=reference_map.get('name'),
-            rooms=reference_map.get('room_count'),
-            area=reference_map.get('area')
-        )
-        hass.bus.async_fire("persistent_notification", {
-            "message": msg,
-            "title": "Neatsvor Cloud Maps"
-        })
 
     async def async_compare_with_reference(call: ServiceCall) -> None:
         """Compare the current map with the reference map."""
         show_details = call.data.get("show_details", False)
-        entity_id = call.data.get("entity_id")
+        entity_ids = _normalize_entity_ids(call.data.get("entity_id"))
 
-        _LOGGER.info("Service call: compare_with_reference for %s", entity_id)
+        _LOGGER.info("Service call: compare_with_reference for %s", entity_ids)
 
-        # Find coordinator
-        coordinator = None
-        if entity_id:
-            coordinator = await _get_coordinator_by_entity_id(entity_id)
+        # Find coordinators
+        coordinators = []
+        if entity_ids:
+            coordinators = await _get_coordinator_by_entity_ids(entity_ids)
         
-        if not coordinator:
+        if not coordinators:
             for entry_id, entry_data in hass.data[DOMAIN].items():
                 if entry_id in ['services_registered', 'stop_handler_registered']:
                     continue
                 coordinator = entry_data.get('coordinator')
                 if coordinator and hasattr(coordinator, 'cloud_maps_sensor'):
+                    coordinators.append(coordinator)
                     break
         
-        if not coordinator or not hasattr(coordinator, 'cloud_maps_sensor'):
+        if not coordinators:
             _LOGGER.error("No cloud_maps_sensor found")
             return
             
-        sensor = coordinator.cloud_maps_sensor
-        reference_id = getattr(sensor, '_reference_map_id', None)
-        selected_id = sensor.selected_map_id
+        for coordinator in coordinators:
+            if not hasattr(coordinator, 'cloud_maps_sensor'):
+                continue
+                
+            sensor = coordinator.cloud_maps_sensor
+            reference_id = getattr(sensor, '_reference_map_id', None)
+            selected_id = sensor.selected_map_id
 
-        if not reference_id:
-            _LOGGER.warning("No reference map set")
-            msg = _get_localized_message(
-                hass, "no_reference_set", 
-                "No reference map has been set."
+            if not reference_id:
+                _LOGGER.warning("No reference map set")
+                msg = _get_localized_message(
+                    hass, "no_reference_set", 
+                    "No reference map has been set."
+                )
+                hass.bus.async_fire("persistent_notification", {
+                    "message": msg,
+                    "title": "Neatsvor Cloud Maps"
+                })
+                return
+
+            if not selected_id:
+                _LOGGER.warning("No map selected")
+                msg = _get_localized_message(
+                    hass, "please_select_map", 
+                    "Please select a map to compare."
+                )
+                hass.bus.async_fire("persistent_notification", {
+                    "message": msg,
+                    "title": "Neatsvor Cloud Maps"
+                })
+                return
+
+            reference_map = sensor.get_map_by_id(reference_id)
+            selected_map = sensor.get_map_by_id(selected_id)
+
+            if not reference_map or not selected_map:
+                _LOGGER.error("Maps not found")
+                return
+
+            differences = []
+            diff_text = ""
+
+            if reference_map.get('room_count') != selected_map.get('room_count'):
+                diff_line = f"🏠 Room count: {reference_map.get('room_count')} vs {selected_map.get('room_count')}"
+                differences.append(diff_line)
+
+            if abs(reference_map.get('area', 0) - selected_map.get('area', 0)) > 1:
+                diff_line = f"📏 Area: {reference_map.get('area')}m² vs {selected_map.get('area')}m²"
+                differences.append(diff_line)
+
+            base_msg = _get_localized_message(
+                hass, "comparison_result",
+                "📊 Comparison: '{selected}' vs Reference '{reference}'\n",
+                selected=selected_map.get('name'),
+                reference=reference_map.get('name')
+            )
+            
+            if differences:
+                diff_text = "\n".join(differences)
+                msg = base_msg + _get_localized_message(
+                    hass, "differences_found", 
+                    "\n⚠️ Differences found:\n{diff}", 
+                    diff=diff_text
+                )
+            else:
+                msg = base_msg + _get_localized_message(
+                    hass, "maps_identical", 
+                    "\n✅ Maps are identical!"
+                )
+
+            if show_details:
+                msg += f"\n\nReference: {reference_map.get('room_count')} rooms, {reference_map.get('area')}m²"
+                msg += f"\nSelected: {selected_map.get('room_count')} rooms, {selected_map.get('area')}m²"
+
+            title = _get_localized_message(
+                hass, "comparison_title", 
+                "Neatsvor Cloud Maps Comparison"
             )
             hass.bus.async_fire("persistent_notification", {
                 "message": msg,
-                "title": "Neatsvor Cloud Maps"
+                "title": title
             })
-            return
-
-        if not selected_id:
-            _LOGGER.warning("No map selected")
-            msg = _get_localized_message(
-                hass, "please_select_map", 
-                "Please select a map to compare."
-            )
-            hass.bus.async_fire("persistent_notification", {
-                "message": msg,
-                "title": "Neatsvor Cloud Maps"
-            })
-            return
-
-        reference_map = sensor.get_map_by_id(reference_id)
-        selected_map = sensor.get_map_by_id(selected_id)
-
-        if not reference_map or not selected_map:
-            _LOGGER.error("Maps not found")
-            return
-
-        differences = []
-        diff_text = ""
-
-        if reference_map.get('room_count') != selected_map.get('room_count'):
-            diff_line = f"🏠 Room count: {reference_map.get('room_count')} vs {selected_map.get('room_count')}"
-            differences.append(diff_line)
-
-        if abs(reference_map.get('area', 0) - selected_map.get('area', 0)) > 1:
-            diff_line = f"📏 Area: {reference_map.get('area')}m² vs {selected_map.get('area')}m²"
-            differences.append(diff_line)
-
-        base_msg = _get_localized_message(
-            hass, "comparison_result",
-            "📊 Comparison: '{selected}' vs Reference '{reference}'\n",
-            selected=selected_map.get('name'),
-            reference=reference_map.get('name')
-        )
-        
-        if differences:
-            diff_text = "\n".join(differences)
-            msg = base_msg + _get_localized_message(
-                hass, "differences_found", 
-                "\n⚠️ Differences found:\n{diff}", 
-                diff=diff_text
-            )
-        else:
-            msg = base_msg + _get_localized_message(
-                hass, "maps_identical", 
-                "\n✅ Maps are identical!"
-            )
-
-        if show_details:
-            msg += f"\n\nReference: {reference_map.get('room_count')} rooms, {reference_map.get('area')}m²"
-            msg += f"\nSelected: {selected_map.get('room_count')} rooms, {selected_map.get('area')}m²"
-
-        title = _get_localized_message(
-            hass, "comparison_title", 
-            "Neatsvor Cloud Maps Comparison"
-        )
-        hass.bus.async_fire("persistent_notification", {
-            "message": msg,
-            "title": title
-        })
 
     async def async_force_update_maps(call: ServiceCall) -> None:
         """Force update all map-related sensors."""
-        entity_id = call.data.get("entity_id")
-        _LOGGER.info("Service call: force_update_maps for %s", entity_id)
+        entity_ids = _normalize_entity_ids(call.data.get("entity_id"))
+        _LOGGER.info("Service call: force_update_maps for %s", entity_ids)
 
-        # Find coordinator
-        coordinator = None
-        if entity_id:
-            coordinator = await _get_coordinator_by_entity_id(entity_id)
+        # Find coordinators
+        coordinators = []
+        if entity_ids:
+            coordinators = await _get_coordinator_by_entity_ids(entity_ids)
         
-        if coordinator:
-            if hasattr(coordinator, 'cloud_maps_sensor'):
-                await coordinator.cloud_maps_sensor.async_force_update()
-            if hasattr(coordinator, 'cloud_map_presets'):
-                await coordinator.cloud_map_presets.async_update()
-            if hasattr(coordinator, 'preset_comparison'):
-                await coordinator.preset_comparison.async_update()
-            if hasattr(coordinator, 'room_list'):
-                await coordinator.room_list.async_update()
-            return
+        if not coordinators:
+            for entry_id, entry_data in hass.data[DOMAIN].items():
+                if entry_id in ['services_registered', 'stop_handler_registered']:
+                    continue
+                coordinator = entry_data.get('coordinator')
+                if coordinator:
+                    coordinators.append(coordinator)
         
-        # Fallback: update all
-        for entry_id, entry_data in hass.data[DOMAIN].items():
-            if entry_id in ['services_registered', 'stop_handler_registered']:
-                continue
-            coordinator = entry_data.get('coordinator')
+        for coordinator in coordinators:
             if coordinator:
                 if hasattr(coordinator, 'cloud_maps_sensor'):
                     await coordinator.cloud_maps_sensor.async_force_update()
@@ -732,35 +760,36 @@ async def _async_register_services(hass: HomeAssistant):
     async def async_cleanup_maps(call: ServiceCall) -> None:
         """Manually clean up old maps and metadata."""
         keep_last = call.data.get("keep_last", 10)
-        entity_id = call.data.get("entity_id")
-        _LOGGER.info("Service call: cleanup_maps (keep_last=%s) for %s", keep_last, entity_id)
+        entity_ids = _normalize_entity_ids(call.data.get("entity_id"))
+        _LOGGER.info("Service call: cleanup_maps (keep_last=%s) for %s", keep_last, entity_ids)
 
-        # Find coordinator
-        coordinator = None
-        if entity_id:
-            coordinator = await _get_coordinator_by_entity_id(entity_id)
+        # Find coordinators
+        coordinators = []
+        if entity_ids:
+            coordinators = await _get_coordinator_by_entity_ids(entity_ids)
         
-        if not coordinator:
+        if not coordinators:
             for entry_id, entry_data in hass.data[DOMAIN].items():
                 if entry_id in ['services_registered', 'stop_handler_registered']:
                     continue
                 coordinator = entry_data.get('coordinator')
                 if coordinator and hasattr(coordinator, 'vacuum') and coordinator.vacuum:
-                    break
+                    coordinators.append(coordinator)
         
-        if coordinator and hasattr(coordinator, 'vacuum') and coordinator.vacuum:
-            if hasattr(coordinator.vacuum, 'visualizer'):
-                await coordinator.vacuum.visualizer.cleanup_realtime_maps(keep_last)
+        for coordinator in coordinators:
+            if coordinator and hasattr(coordinator, 'vacuum') and coordinator.vacuum:
+                if hasattr(coordinator.vacuum, 'visualizer'):
+                    await coordinator.vacuum.visualizer.cleanup_realtime_maps(keep_last)
 
-                msg = _get_localized_message(
-                    hass, "cleanup_completed", 
-                    "Cleanup completed. Kept the last {count} maps.",
-                    count=keep_last
-                )
-                hass.bus.async_fire("persistent_notification", {
-                    "message": msg,
-                    "title": "Neatsvor Map Cleanup"
-                })
+                    msg = _get_localized_message(
+                        hass, "cleanup_completed", 
+                        "Cleanup completed. Kept the last {count} maps.",
+                        count=keep_last
+                    )
+                    hass.bus.async_fire("persistent_notification", {
+                        "message": msg,
+                        "title": "Neatsvor Map Cleanup"
+                    })
 
     async def async_save_select_states(call: ServiceCall = None) -> None:
         """Save the states of all select entities."""
@@ -802,130 +831,134 @@ async def _async_register_services(hass: HomeAssistant):
 
     async def async_set_reference_map(call: ServiceCall) -> None:
         """Set the current map as the reference."""
-        entity_id = call.data.get("entity_id")
-        _LOGGER.info("Service call: set_reference_map for %s", entity_id)
+        entity_ids = _normalize_entity_ids(call.data.get("entity_id"))
+        _LOGGER.info("Service call: set_reference_map for %s", entity_ids)
 
-        # Find coordinator
-        coordinator = None
-        if entity_id:
-            coordinator = await _get_coordinator_by_entity_id(entity_id)
+        # Find coordinators
+        coordinators = []
+        if entity_ids:
+            coordinators = await _get_coordinator_by_entity_ids(entity_ids)
         
-        if not coordinator:
+        if not coordinators:
             for entry_id, entry_data in hass.data[DOMAIN].items():
                 if entry_id in ['services_registered', 'stop_handler_registered']:
                     continue
                 coordinator = entry_data.get('coordinator')
                 if coordinator and hasattr(coordinator, 'vacuum') and coordinator.vacuum:
-                    break
+                    coordinators.append(coordinator)
         
-        if coordinator and hasattr(coordinator, 'vacuum') and coordinator.vacuum:
-            await coordinator.vacuum.save_reference_map()
-            await coordinator.async_request_refresh()
-            _LOGGER.info("Reference map saved")
+        for coordinator in coordinators:
+            if coordinator and hasattr(coordinator, 'vacuum') and coordinator.vacuum:
+                await coordinator.vacuum.save_reference_map()
+                await coordinator.async_request_refresh()
+                _LOGGER.info("Reference map saved")
 
     async def async_use_cloud_map(call: ServiceCall) -> None:
         """Use a specific cloud map as the current map."""
         map_id = call.data.get("map_id")
         map_url = call.data.get("map_url")
         map_md5 = call.data.get("map_md5")
-        entity_id = call.data.get("entity_id")
+        entity_ids = _normalize_entity_ids(call.data.get("entity_id"))
 
-        _LOGGER.info("Service call: use_cloud_map (map_id=%s) for %s", map_id, entity_id)
+        _LOGGER.info("Service call: use_cloud_map (map_id=%s) for %s", map_id, entity_ids)
 
-        # Find coordinator
-        coordinator = None
-        if entity_id:
-            coordinator = await _get_coordinator_by_entity_id(entity_id)
+        # Find coordinators
+        coordinators = []
+        if entity_ids:
+            coordinators = await _get_coordinator_by_entity_ids(entity_ids)
         
-        if not coordinator:
+        if not coordinators:
             for entry_id, entry_data in hass.data[DOMAIN].items():
                 if entry_id in ['services_registered', 'stop_handler_registered']:
                     continue
                 coordinator = entry_data.get('coordinator')
                 if coordinator and hasattr(coordinator, 'vacuum') and coordinator.vacuum:
-                    break
+                    coordinators.append(coordinator)
         
-        if coordinator and hasattr(coordinator, 'vacuum') and coordinator.vacuum:
-            success = await coordinator.vacuum.use_cloud_map(map_id, map_url, map_md5)
-            if success:
-                _LOGGER.info("Map %s is now current", map_id)
-                msg = _get_localized_message(
-                    hass, "map_activated", 
-                    "Map activated successfully"
-                )
-                hass.bus.async_fire("persistent_notification", {
-                    "message": msg,
-                    "title": "Neatsvor"
-                })
+        for coordinator in coordinators:
+            if coordinator and hasattr(coordinator, 'vacuum') and coordinator.vacuum:
+                success = await coordinator.vacuum.use_cloud_map(map_id, map_url, map_md5)
+                if success:
+                    _LOGGER.info("Map %s is now current", map_id)
+                    msg = _get_localized_message(
+                        hass, "map_activated", 
+                        "Map activated successfully"
+                    )
+                    hass.bus.async_fire("persistent_notification", {
+                        "message": msg,
+                        "title": "Neatsvor"
+                    })
 
     async def async_use_selected_cloud_map(call: ServiceCall) -> None:
         """Use the selected cloud map as the current map."""
-        entity_id = call.data.get("entity_id")
-        _LOGGER.info("Service call: use_selected_cloud_map for %s", entity_id)
+        entity_ids = _normalize_entity_ids(call.data.get("entity_id"))
+        _LOGGER.info("Service call: use_selected_cloud_map for %s", entity_ids)
 
-        # Find coordinator
-        coordinator = None
-        if entity_id:
-            coordinator = await _get_coordinator_by_entity_id(entity_id)
+        # Find coordinators
+        coordinators = []
+        if entity_ids:
+            coordinators = await _get_coordinator_by_entity_ids(entity_ids)
         
-        if not coordinator:
+        if not coordinators:
             for entry_id, entry_data in hass.data[DOMAIN].items():
                 if entry_id in ['services_registered', 'stop_handler_registered']:
                     continue
                 coordinator = entry_data.get('coordinator')
                 if coordinator and hasattr(coordinator, 'cloud_maps_sensor'):
-                    break
+                    coordinators.append(coordinator)
         
-        if coordinator and hasattr(coordinator, 'cloud_maps_sensor'):
-            sensor = coordinator.cloud_maps_sensor
-            await sensor.use_selected_cloud_map()
-        else:
-            _LOGGER.error("No cloud_maps_sensor in coordinator")
+        for coordinator in coordinators:
+            if coordinator and hasattr(coordinator, 'cloud_maps_sensor'):
+                sensor = coordinator.cloud_maps_sensor
+                await sensor.use_selected_cloud_map()
+            else:
+                _LOGGER.error("No cloud_maps_sensor in coordinator")
 
     async def async_force_load_history(call: ServiceCall) -> None:
         """Force load all history maps."""
-        entity_id = call.data.get("entity_id")
-        _LOGGER.info("Service call: force_load_history for %s", entity_id)
+        entity_ids = _normalize_entity_ids(call.data.get("entity_id"))
+        _LOGGER.info("Service call: force_load_history for %s", entity_ids)
 
-        # Find coordinator
-        coordinator = None
-        if entity_id:
-            coordinator = await _get_coordinator_by_entity_id(entity_id)
+        # Find coordinators
+        coordinators = []
+        if entity_ids:
+            coordinators = await _get_coordinator_by_entity_ids(entity_ids)
         
-        if not coordinator:
+        if not coordinators:
             for entry_id, entry_data in hass.data[DOMAIN].items():
                 if entry_id in ['services_registered', 'stop_handler_registered']:
                     continue
                 coordinator = entry_data.get('coordinator')
                 if coordinator and hasattr(coordinator, 'vacuum') and coordinator.vacuum:
-                    break
+                    coordinators.append(coordinator)
         
-        if coordinator and hasattr(coordinator, 'vacuum') and coordinator.vacuum:
-            if hasattr(coordinator.vacuum, 'clean_history'):
-                records = await coordinator.vacuum.clean_history.get_clean_history(
-                    coordinator.vacuum.info.device_id, 10
-                )
+        for coordinator in coordinators:
+            if coordinator and hasattr(coordinator, 'vacuum') and coordinator.vacuum:
+                if hasattr(coordinator.vacuum, 'clean_history'):
+                    records = await coordinator.vacuum.clean_history.get_clean_history(
+                        coordinator.vacuum.info.device_id, 10
+                    )
 
-                _LOGGER.info("Found %s records", len(records))
+                    _LOGGER.info("Found %s records", len(records))
 
-                for i, record in enumerate(records):
-                    _LOGGER.info("Loading record %s...", record.record_id)
-                    map_data = await coordinator.vacuum.clean_history.load_clean_record_map(record)
+                    for i, record in enumerate(records):
+                        _LOGGER.info("Loading record %s...", record.record_id)
+                        map_data = await coordinator.vacuum.clean_history.load_clean_record_map(record)
 
-                    if map_data:
-                        _LOGGER.info("Record %s loaded", record.record_id)
-                    else:
-                        _LOGGER.error("Failed to load record %s", record.record_id)
+                        if map_data:
+                            _LOGGER.info("Record %s loaded", record.record_id)
+                        else:
+                            _LOGGER.error("Failed to load record %s", record.record_id)
 
-                msg = _get_localized_message(
-                    hass, "history_maps_loaded", 
-                    "Loaded {count} history maps",
-                    count=len(records)
-                )
-                hass.bus.async_fire("persistent_notification", {
-                    "message": msg,
-                    "title": "Neatsvor Clean History"
-                })
+                    msg = _get_localized_message(
+                        hass, "history_maps_loaded", 
+                        "Loaded {count} history maps",
+                        count=len(records)
+                    )
+                    hass.bus.async_fire("persistent_notification", {
+                        "message": msg,
+                        "title": "Neatsvor Clean History"
+                    })
 
     async def handle_history_map_updated(event):
         """Handle history map updated event."""
@@ -934,107 +967,110 @@ async def _async_register_services(hass: HomeAssistant):
     async def async_cleanup_history_maps(call: ServiceCall) -> None:
         """Clean up old history maps."""
         keep_last = call.data.get("keep_last", 50)
-        entity_id = call.data.get("entity_id")
-        _LOGGER.info("Service call: cleanup_history_maps (keep_last=%s) for %s", keep_last, entity_id)
+        entity_ids = _normalize_entity_ids(call.data.get("entity_id"))
+        _LOGGER.info("Service call: cleanup_history_maps (keep_last=%s) for %s", keep_last, entity_ids)
 
-        # Find coordinator
-        coordinator = None
-        if entity_id:
-            coordinator = await _get_coordinator_by_entity_id(entity_id)
+        # Find coordinators
+        coordinators = []
+        if entity_ids:
+            coordinators = await _get_coordinator_by_entity_ids(entity_ids)
         
-        if not coordinator:
+        if not coordinators:
             for entry_id, entry_data in hass.data[DOMAIN].items():
                 if entry_id in ['services_registered', 'stop_handler_registered']:
                     continue
                 coordinator = entry_data.get('coordinator')
                 if coordinator and hasattr(coordinator, 'clean_history_sensor'):
-                    break
+                    coordinators.append(coordinator)
         
-        if coordinator and hasattr(coordinator, 'clean_history_sensor'):
-            sensor = coordinator.clean_history_sensor
-            await sensor.async_cleanup_old_maps()
+        for coordinator in coordinators:
+            if coordinator and hasattr(coordinator, 'clean_history_sensor'):
+                sensor = coordinator.clean_history_sensor
+                await sensor.async_cleanup_old_maps()
 
-            msg = _get_localized_message(
-                hass, "history_maps_cleaned", 
-                "Cleaned up old history maps"
-            )
-            hass.bus.async_fire("persistent_notification", {
-                "message": msg,
-                "title": "Neatsvor Clean History"
-            })
+                msg = _get_localized_message(
+                    hass, "history_maps_cleaned", 
+                    "Cleaned up old history maps"
+                )
+                hass.bus.async_fire("persistent_notification", {
+                    "message": msg,
+                    "title": "Neatsvor Clean History"
+                })
 
     async def async_cleanup_all_except_current(call: ServiceCall) -> None:
         """Clean up all history maps except the current one."""
-        entity_id = call.data.get("entity_id")
-        _LOGGER.info("Service call: cleanup_all_except_current for %s", entity_id)
+        entity_ids = _normalize_entity_ids(call.data.get("entity_id"))
+        _LOGGER.info("Service call: cleanup_all_except_current for %s", entity_ids)
 
-        # Find coordinator
-        coordinator = None
-        if entity_id:
-            coordinator = await _get_coordinator_by_entity_id(entity_id)
+        # Find coordinators
+        coordinators = []
+        if entity_ids:
+            coordinators = await _get_coordinator_by_entity_ids(entity_ids)
         
-        if not coordinator:
+        if not coordinators:
             for entry_id, entry_data in hass.data[DOMAIN].items():
                 if entry_id in ['services_registered', 'stop_handler_registered']:
                     continue
                 coordinator = entry_data.get('coordinator')
                 if coordinator and hasattr(coordinator, 'clean_history_sensor'):
-                    break
+                    coordinators.append(coordinator)
         
-        if coordinator and hasattr(coordinator, 'clean_history_sensor'):
-            sensor = coordinator.clean_history_sensor
-            await sensor.async_cleanup_all_except_current()
+        for coordinator in coordinators:
+            if coordinator and hasattr(coordinator, 'clean_history_sensor'):
+                sensor = coordinator.clean_history_sensor
+                await sensor.async_cleanup_all_except_current()
 
-            msg = _get_localized_message(
-                hass, "all_except_current_cleaned", 
-                "Cleaned up all maps except current"
-            )
-            hass.bus.async_fire("persistent_notification", {
-                "message": msg,
-                "title": "Neatsvor Clean History"
-            })
+                msg = _get_localized_message(
+                    hass, "all_except_current_cleaned", 
+                    "Cleaned up all maps except current"
+                )
+                hass.bus.async_fire("persistent_notification", {
+                    "message": msg,
+                    "title": "Neatsvor Clean History"
+                })
 
     async def async_vacuum_zone_clean(call: ServiceCall) -> None:
         """Alias for vacuum_clean_zone to maintain compatibility with xiaomi-vacuum-map-card."""
-        entity_id = call.data.get("entity_id")
+        entity_ids = _normalize_entity_ids(call.data.get("entity_id"))
         zones = call.data.get("zones", [])
 
         if not zones:
             zones = call.data.get("zone", [])
 
-        _LOGGER.info("Neatsvor vacuum zone clean alias called: entity=%s, zones=%s", entity_id, zones)
+        _LOGGER.info("Neatsvor vacuum zone clean alias called: entity=%s, zones=%s", entity_ids, zones)
 
-        if not entity_id:
+        if not entity_ids:
             _LOGGER.error("No entity_id provided")
             return
 
-        # Find coordinator by entity_id
-        coordinator = await _get_coordinator_by_entity_id(entity_id)
-        if not coordinator:
-            _LOGGER.error("Coordinator not found for entity_id: %s", entity_id)
+        # Find coordinators by entity_ids
+        coordinators = await _get_coordinator_by_entity_ids(entity_ids)
+        if not coordinators:
+            _LOGGER.error("Coordinator not found for entity_ids: %s", entity_ids)
             return
 
-        if not hasattr(coordinator, 'vacuum') or not coordinator.vacuum:
-            _LOGGER.error("Vacuum not available for entity_id: %s", entity_id)
-            return
-
-        vacuum = coordinator.vacuum
-
-        for zone in zones:
-            if len(zone) == 4:
-                x1, y1, x2, y2 = zone
-                repeats = 1
-            elif len(zone) == 5:
-                x1, y1, x2, y2, repeats = zone
-            else:
-                _LOGGER.error("Invalid zone format: %s", zone)
+        for coordinator in coordinators:
+            if not hasattr(coordinator, 'vacuum') or not coordinator.vacuum:
+                _LOGGER.error("Vacuum not available for coordinator")
                 continue
 
-            _LOGGER.info("Zone: (%s,%s)-(%s,%s) x%s", x1, y1, x2, y2, repeats)
-            await vacuum.zone_clean(x1, y1, x2, y2, repeats)
+            vacuum = coordinator.vacuum
 
-        await coordinator.async_request_refresh()
-        _LOGGER.info("Zone clean commands sent")
+            for zone in zones:
+                if len(zone) == 4:
+                    x1, y1, x2, y2 = zone
+                    repeats = 1
+                elif len(zone) == 5:
+                    x1, y1, x2, y2, repeats = zone
+                else:
+                    _LOGGER.error("Invalid zone format: %s", zone)
+                    continue
+
+                _LOGGER.info("Zone: (%s,%s)-(%s,%s) x%s", x1, y1, x2, y2, repeats)
+                await vacuum.zone_clean(x1, y1, x2, y2, repeats)
+
+            await coordinator.async_request_refresh()
+            _LOGGER.info("Zone clean commands sent")
 
     async def handle_cloud_camera_updated(event):
         """Handle cloud camera updated event."""

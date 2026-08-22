@@ -124,10 +124,18 @@ class NeatsvorVacuum(CoordinatorEntity, StateVacuumEntity):
 
     @property
     def fan_speed(self) -> Optional[str]:
-        """Return current fan speed."""
+        """Return current fan speed (internal code, not localized)."""
         if not self.coordinator.data:
             return None
         fan_speed = self.coordinator.data.get("fan_speed")
+        if fan_speed:
+            return fan_speed  # ✅ Возвращаем сырой код
+        return None
+
+    @property
+    def fan_speed_localized(self) -> Optional[str]:
+        """Return localized fan speed for display (used by UI)."""
+        fan_speed = self.fan_speed
         if fan_speed:
             return self._get_localized_fan_speed(fan_speed)
         return None
@@ -466,5 +474,9 @@ class NeatsvorVacuum(CoordinatorEntity, StateVacuumEntity):
         for cons_type, cons_data in consumables.items():
             attributes[f"{cons_type}_remaining"] = cons_data.get("remaining_percent")
             attributes[f"{cons_type}_hours"] = cons_data.get("remaining_hours")
+
+        # Добавляем локализованную скорость для отображения
+        if self.fan_speed:
+            attributes["fan_speed_display"] = self._get_localized_fan_speed(self.fan_speed)
 
         return attributes

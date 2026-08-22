@@ -144,7 +144,6 @@ class NeatsvorCoordinator(DataUpdateCoordinator):
             data["malfunction_code"] = sensors.malfunction_code if hasattr(sensors, 'malfunction_code') else 0
 
             if rest_ok and self.vacuum and self.vacuum.info:
-                # Increase retry attempts for DNS-sensitive requests
                 max_retries = 3
                 rest_error = None
                 for attempt in range(max_retries):
@@ -191,25 +190,27 @@ class NeatsvorCoordinator(DataUpdateCoordinator):
                                 "finished": record.get("cleanFinishedFlag", False),
                             }
 
-                        # Break on success - REST data loaded successfully
                         rest_error = None
                         break
 
                     except Exception as e:
                         rest_error = e
                         error_str = str(e)
+                        
                         if "DNS" in error_str or "Timeout" in error_str or "getaddrinfo" in error_str:
                             if attempt < max_retries - 1:
-                                wait_time = 2 ** attempt  # Exponential backoff: 1, 2, 4 seconds
-                                _LOGGER.warning("DNS/Timeout error, retry %s/%s in %ss: %s", attempt + 1, max_retries, wait_time, error_str)
+                                wait_time = 2 ** attempt  # 1, 2, 4 секунды
+                                _LOGGER.warning("DNS/Timeout error, retry %s/%s in %ss: %s", 
+                                               attempt + 1, max_retries, wait_time, error_str)
                                 await asyncio.sleep(wait_time)
                                 continue
-                        # If it's not a DNS error or this is the last attempt
-                        if attempt == max_retries - 1:
-                            _LOGGER.warning("Error fetching REST data after %s attempts: %s", max_retries, e)
-                            # Don't raise - we have MQTT data, REST is optional
+                            else:
+                                _LOGGER.warning("DNS/Timeout error after %s attempts: %s", max_retries, e)
+                                break
+                        else:
+                            _LOGGER.warning("REST error (non-retryable): %s", e)
+                            break
                 
-                # If REST completely failed and we have no data at all, raise UpdateFailed
                 if rest_error and not data.get("battery_level") and not data.get("status_code"):
                     _LOGGER.error("REST data fetch failed and no MQTT data available")
                     raise UpdateFailed(f"Failed to fetch data: {rest_error}")

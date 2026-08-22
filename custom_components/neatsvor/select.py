@@ -311,15 +311,23 @@ class NeatsvorEnumSelect(CoordinatorEntity, SelectEntity):
         _LOGGER.info("Setting DP %s = %s (%s)", self._dp_id, value, internal_option)
 
         try:
+            # Отправляем команду
             await self.coordinator.vacuum.send_raw_command(self._dp_id, value)
             self._attr_current_option = option
             self._initial_value_sent = True
 
+            # Сохраняем в storage
             if hasattr(self.coordinator, 'select_storage'):
                 await self.coordinator.select_storage.async_set(self._storage_key, internal_option)
 
             self.async_write_ha_state()
+            
+            # Ждём, пока устройство применит команду
+            await asyncio.sleep(1.5)
+            
+            # Только потом обновляем состояние
             await self.coordinator.async_request_refresh()
+            
         except Exception as e:
             _LOGGER.error("Error setting option: %s", e)
 
@@ -444,10 +452,8 @@ class NeatsvorRoomSelect(CoordinatorEntity, SelectEntity):
 
         try:
             if hasattr(self.coordinator.vacuum, 'start_room_clean_with_preset'):
-                _LOGGER.debug("Using start_room_clean_with_preset for room %s", room_id)
                 await self.coordinator.vacuum.start_room_clean_with_preset([room_id])
             else:
-                _LOGGER.debug("Using start_room_clean for room %s", room_id)
                 await self.coordinator.vacuum.start_room_clean([room_id])
 
             self._attr_current_option = option
@@ -457,6 +463,10 @@ class NeatsvorRoomSelect(CoordinatorEntity, SelectEntity):
                 self._saved_room = option
 
             self.async_write_ha_state()
+            
+            # Ждём, пока устройство применит команду
+            await asyncio.sleep(1.5)
+            
             await self.coordinator.async_request_refresh()
 
             if self.hass:

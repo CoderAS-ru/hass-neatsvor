@@ -546,6 +546,8 @@ class NeatsvorMapSensor(CoordinatorEntity, SensorEntity):
         self._robot_position: Optional[Dict[str, int]] = None
         self._charger_position: Optional[Dict[str, int]] = None
 
+        coordinator.map_entity = self
+
         if coordinator.vacuum:
             coordinator.vacuum.on_map(self._async_handle_map)
 
