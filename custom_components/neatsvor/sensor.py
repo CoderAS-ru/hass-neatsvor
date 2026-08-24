@@ -26,6 +26,8 @@ from .const import (
     get_localized_fan_speed,
     get_localized_water_level,
     get_localized_clean_mode,
+    MALFUNCTION_MAP_EN,
+    MALFUNCTION_MAP_RU,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -346,82 +348,12 @@ class NeatsvorSensor(CoordinatorEntity, SensorEntity):
         if status_code != 13:
             return get_localized_status(status_key, language)
         
-        # It's an error - add details
-        error_map_ru = {
-            0: "Нет ошибки",
-            1: "Неизвестная ошибка",
-            2: "Запутывание колеса",
-            3: "Запутывание боковой щетки",
-            4: "Запутывание основной щетки",
-            5: "Колесо зависло",
-            6: "Бампер застрял",
-            7: "Ошибка датчика перепада высот",
-            8: "Неисправность бака",
-            9: "Нет контейнера для пыли",
-            10: "Не может найти базу",
-            11: "Неисправность камеры",
-            12: "Неисправность лидара",
-            13: "Лидар застрял",
-            14: "Низкий заряд",
-            15: "Включите выключатель",
-            16: "Неисправность вентилятора",
-            17: "Робот застрял",
-            18: "Контейнер для пыли полон",
-            19: "Зона недоступна",
-            20: "Бак чистой воды не установлен",
-            21: "Контейнер для пыли не установлен",
-            22: "Нет воды в баке",
-            23: "Бак грязной воды не установлен",
-            24: "Бак грязной воды полон",
-            25: "Паллет не установлен",
-            26: "Швабра не установлена",
-            27: "Запутывание швабры",
-            28: "Паллет полон",
-            29: "Недостаточно моющего средства",
-            50: "Старт на ковре",
-            51: "Неисправность батареи",
-        }
-        
-        error_map_en = {
-            0: "No error",
-            1: "Unknown error",
-            2: "Wheel winded",
-            3: "Side brush winded",
-            4: "Rolling brush winded",
-            5: "Wheel suspended",
-            6: "Bumper stuck",
-            7: "Cliff sensor error",
-            8: "Tank malfunction",
-            9: "No dust box",
-            10: "Cannot find dock",
-            11: "Camera malfunction",
-            12: "Lidar malfunction",
-            13: "Lidar stuck",
-            14: "Low power",
-            15: "Turn on the switch",
-            16: "Fan malfunction",
-            17: "Robot trap",
-            18: "Dust box full",
-            19: "Destination unreachable",
-            20: "Clean tank uninstall",
-            21: "Dust box uninstall",
-            22: "Clean tank lack water",
-            23: "Sewage tank uninstall",
-            24: "Sewage tank full",
-            25: "Pallet uninstall",
-            26: "Mop uninstall",
-            27: "Mop winded",
-            28: "Pallet water full",
-            29: "Soap shortage",
-            50: "Start on carpet",
-            51: "Battery malfunction",
-        }
-        
+        # It's an error - add details using imported maps
         if language == "ru":
-            error_text = error_map_ru.get(error_code, f"Неизвестная ошибка ({error_code})")
+            error_text = MALFUNCTION_MAP_RU.get(error_code, f"Неизвестная ошибка ({error_code})")
             return f"Ошибка: {error_text}"
         else:
-            error_text = error_map_en.get(error_code, f"Unknown error ({error_code})")
+            error_text = MALFUNCTION_MAP_EN.get(error_code, f"Unknown error ({error_code})")
             return f"Error: {error_text}"
 
     @property
@@ -2310,76 +2242,7 @@ class NeatsvorMalfunctionSensor(CoordinatorEntity, SensorEntity):
         self._attr_unique_id = f"neatsvor_{device_id}_malfunction"
         self._attr_device_info = coordinator.device_info
         self._attr_icon = "mdi:alert-circle"
-        
-        self._error_map = {
-            0: "None",
-            1: "Unknown error",
-            2: "Wheel winded",
-            3: "Side brush winded",
-            4: "Rolling brush winded",
-            5: "Wheel suspended",
-            6: "Bumper stuck",
-            7: "Cliff sensor error",
-            8: "Tank malfunction",
-            9: "No dust box",
-            10: "Cannot find dock",
-            11: "Camera malfunction",
-            12: "Lidar malfunction",
-            13: "Lidar stuck",
-            14: "Low power",
-            15: "Turn on the switch",
-            16: "Fan malfunction",
-            17: "Robot trap",
-            18: "Dust box full",
-            19: "Destination unreachable",
-            20: "Clean tank uninstall",
-            21: "Dust box uninstall",
-            22: "Clean tank lack water",
-            23: "Sewage tank uninstall",
-            24: "Sewage tank full",
-            25: "Pallet uninstall",
-            26: "Mop uninstall",
-            27: "Mop winded",
-            28: "Pallet water full",
-            29: "Soap shortage",
-            50: "Start on carpet",
-            51: "Battery malfunction",
-        }
-        
-        self._error_map_ru = {
-            0: "Нет",
-            1: "Неизвестная ошибка",
-            2: "Запутывание колеса",
-            3: "Запутывание боковой щетки",
-            4: "Запутывание основной щетки",
-            5: "Колесо зависло",
-            6: "Бампер застрял",
-            7: "Ошибка датчика перепада высот",
-            8: "Неисправность бака",
-            9: "Нет контейнера для пыли",
-            10: "Не может найти базу",
-            11: "Неисправность камеры",
-            12: "Неисправность лидара",
-            13: "Лидар застрял",
-            14: "Низкий заряд",
-            15: "Включите выключатель",
-            16: "Неисправность вентилятора",
-            17: "Робот застрял",
-            18: "Контейнер для пыли полон",
-            19: "Зона недоступна",
-            20: "Бак чистой воды не установлен",
-            21: "Контейнер для пыли не установлен",
-            22: "Нет воды в баке",
-            23: "Бак грязной воды не установлен",
-            24: "Бак грязной воды полон",
-            25: "Паллет не установлен",
-            26: "Швабра не установлена",
-            27: "Запутывание швабры",
-            28: "Паллет полон",
-            29: "Недостаточно моющего средства",
-            50: "Старт на ковре",
-            51: "Неисправность батареи",
-        }
+        # Словари теперь используются из const
 
     @property
     def native_value(self) -> str:
@@ -2387,7 +2250,6 @@ class NeatsvorMalfunctionSensor(CoordinatorEntity, SensorEntity):
         if not self.coordinator or not self.coordinator.data:
             return "Unknown"
         
-        # Добавляем безопасную проверку
         error_code = self.coordinator.data.get("malfunction_code")
         if error_code is None:
             return "Unknown"
@@ -2395,8 +2257,8 @@ class NeatsvorMalfunctionSensor(CoordinatorEntity, SensorEntity):
         language = self.hass.config.language if self.hass else "en"
         
         if language == "ru":
-            return self._error_map_ru.get(error_code, f"Неизвестная ошибка ({error_code})")
-        return self._error_map.get(error_code, f"Unknown error ({error_code})")
+            return MALFUNCTION_MAP_RU.get(error_code, f"Неизвестная ошибка ({error_code})")
+        return MALFUNCTION_MAP_EN.get(error_code, f"Unknown error ({error_code})")
 
     @property
     def extra_state_attributes(self) -> dict:
@@ -2407,8 +2269,8 @@ class NeatsvorMalfunctionSensor(CoordinatorEntity, SensorEntity):
         error_code = self.coordinator.data.get("malfunction_code", 0)
         return {
             "error_code": error_code,
-            "error_description_en": self._error_map.get(error_code, f"Unknown error ({error_code})"),
-            "error_description_ru": self._error_map_ru.get(error_code, f"Неизвестная ошибка ({error_code})")
+            "error_description_en": MALFUNCTION_MAP_EN.get(error_code, f"Unknown error ({error_code})"),
+            "error_description_ru": MALFUNCTION_MAP_RU.get(error_code, f"Неизвестная ошибка ({error_code})")
         }
 
     @property

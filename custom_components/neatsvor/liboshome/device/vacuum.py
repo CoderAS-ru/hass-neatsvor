@@ -728,9 +728,10 @@ class NeatsvorVacuum:
             return
 
         # Get current map_id from map data
+        # MapData has frame_id field, not header.map_id
         current_map_id = None
-        if 'raw' in map_data and hasattr(map_data['raw'], 'header'):
-            current_map_id = map_data['raw'].header.map_id
+        if 'raw' in map_data and hasattr(map_data['raw'], 'frame_id'):
+            current_map_id = map_data['raw'].frame_id
 
         if not current_map_id:
             return

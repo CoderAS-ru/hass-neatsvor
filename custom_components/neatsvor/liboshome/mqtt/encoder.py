@@ -74,7 +74,7 @@ class NeatsvorEncoder:
         if dp_type is None:
             raise ValueError(f"DP {dp_id} has no type in schema")
 
-        # Validate value (with special handling for DP 14)
+        # Validate value
         self._validate_value(dp_id, dp_type, value, dp_info.get('enum'))
 
         try:

@@ -525,7 +525,7 @@ class NeatsvorCloudMapSelect(CoordinatorEntity, SelectEntity):
             if saved:
                 try:
                     return int(saved)
-                except:
+                except (ValueError, TypeError):
                     pass
         return None
 
@@ -684,7 +684,7 @@ class NeatsvorCleanHistorySelect(CoordinatorEntity, SelectEntity):
             if saved:
                 try:
                     return int(saved)
-                except:
+                except (ValueError, TypeError):
                     pass
         return None
 

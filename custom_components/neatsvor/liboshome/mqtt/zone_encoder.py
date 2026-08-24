@@ -6,7 +6,6 @@ from google.protobuf import any_pb2
 
 _LOGGER = logging.getLogger(__name__)
 
-DP_ZONE_CLEAN = 32
 COORDINATE_SCALE = 10
 
 

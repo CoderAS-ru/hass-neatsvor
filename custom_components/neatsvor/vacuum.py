@@ -313,25 +313,9 @@ class NeatsvorVacuum(CoordinatorEntity, StateVacuumEntity):
                 success = await self.coordinator.vacuum.save_current_map_to_cloud()
                 return success
             else:
-                await self.coordinator.vacuum._dp_manager.send(14, None)
-
-                _LOGGER.info("Command to save map to cloud sent (DP 14)")
-
-                self.hass.bus.async_fire("persistent_notification", {
-                    "message": "Command sent to save current map to cloud",
-                    "title": "Neatsvor"
-                })
-
-                async def delayed_refresh():
-                    import asyncio
-                    await asyncio.sleep(5)
-                    if hasattr(self.coordinator, 'cloud_maps_sensor'):
-                        await self.coordinator.cloud_maps_sensor.async_update()
-
-                asyncio.create_task(delayed_refresh())
-
-                return True
-
+                # Этот метод всегда существует в liboshome/device/vacuum.py
+                _LOGGER.error("Method save_current_map_to_cloud not found")
+                return False
         except Exception as e:
             _LOGGER.error("Error saving map to cloud: %s", e)
             self.hass.bus.async_fire("persistent_notification", {
