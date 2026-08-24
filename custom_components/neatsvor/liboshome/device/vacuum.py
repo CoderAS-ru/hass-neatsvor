@@ -519,9 +519,9 @@ class NeatsvorVacuum:
         """Room cleaning."""
         try:
             dp_id = self._get_dp_id('room_clean', 31)
-                    if dp_id is None:
-                        _LOGGER.error("Cannot get DP ID for room_clean")
-                        return False
+            if dp_id is None:
+                _LOGGER.error("Cannot get DP ID for room_clean")
+                return False
 
             # Setup protobuf path
             proto_dir = Path(__file__).parent.parent / "protobuf"
