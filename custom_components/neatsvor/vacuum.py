@@ -89,31 +89,31 @@ class NeatsvorVacuum(CoordinatorEntity, StateVacuumEntity):
 
     @property
     def activity(self) -> VacuumActivity | None:
-        """Return vacuum activity."""
+        """Return vacuum activity for internal HA use."""
         if not self.coordinator or not self.coordinator.data:
             return None
 
-        status_text = self.coordinator.data.get("status_text")
-        if not status_text:
-            return VacuumActivity.IDLE
-
-        status_text = status_text.lower()
+        status_text = self.coordinator.data.get("status_text", "").lower()
 
         activity_map = {
+            # Русские ключи
+            "уборк": VacuumActivity.CLEANING,
+            "возврат": VacuumActivity.RETURNING,
+            "зарядк": VacuumActivity.DOCKED,
+            "заряжен": VacuumActivity.DOCKED,
+            "приостановлен": VacuumActivity.PAUSED,
+            "ошибк": VacuumActivity.ERROR,
+            "сон": VacuumActivity.IDLE,
+            "ожидание": VacuumActivity.IDLE,
+            "перемещение": VacuumActivity.RETURNING,
+            # Английские ключи (для совместимости)
             "cleaning": VacuumActivity.CLEANING,
-            "normal_clean": VacuumActivity.CLEANING,
-            "room_clean": VacuumActivity.CLEANING,
-            "zone_clean": VacuumActivity.CLEANING,
-            "spot_clean": VacuumActivity.CLEANING,
             "returning": VacuumActivity.RETURNING,
-            "recharge": VacuumActivity.RETURNING,
             "charging": VacuumActivity.DOCKED,
-            "charge_finished": VacuumActivity.DOCKED,
             "docked": VacuumActivity.DOCKED,
-            "idle": VacuumActivity.IDLE,
-            "pause": VacuumActivity.PAUSED,
-            "sleep": VacuumActivity.IDLE,
+            "paused": VacuumActivity.PAUSED,
             "error": VacuumActivity.ERROR,
+            "idle": VacuumActivity.IDLE,
         }
 
         for key, value in activity_map.items():
@@ -387,8 +387,18 @@ class NeatsvorVacuum(CoordinatorEntity, StateVacuumEntity):
 
     @property
     def state(self) -> Optional[str]:
-        """Deprecated method, use activity instead."""
-        return None
+        """Return vacuum state - same as status sensor."""
+        if not self.coordinator or not self.coordinator.data:
+            return None
+        
+        status_text = self.coordinator.data.get("status_text")
+        
+        # Если статус пустой или Unknown — показываем "Неизвестно"
+        if not status_text or status_text == "Unknown":
+            return "Неизвестно"
+        
+        # Возвращаем полный локализованный статус (с деталями ошибок)
+        return status_text
 
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
