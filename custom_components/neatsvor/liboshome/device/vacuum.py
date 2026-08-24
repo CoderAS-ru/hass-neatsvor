@@ -63,7 +63,6 @@ class NeatsvorVacuum:
     DP_LOCATE = 'locate'
     DP_FAN = 'fan'
     DP_WATER_TANK = 'water_tank'
-    DP_ROOM_CLEAN = 31  # Fixed ID for room cleaning
     DP_BUILD_MAP = 'build_map'
     DP_VOLUME_SET = 'volume_set'
     DP_DUST_COLLECTION = 'dust_collection'
@@ -402,6 +401,30 @@ class NeatsvorVacuum:
     # Basic commands
     # ------------------------------------------------------------------
 
+    def _get_dp_id(self, code: str, fallback: Optional[int] = None) -> Optional[int]:
+        """
+        Get DP ID by code from DP manager with fallback.
+        
+        Args:
+            code: DP code (e.g., 'room_clean', 'zone_clean', 'map_reuse', 'map_save')
+            fallback: Hardcoded ID to use if DP not found in schema
+        
+        Returns:
+            DP ID or None if not found and no fallback
+        """
+        if self.dp_manager:
+            dp_id = self.dp_manager.get_id(code)
+            if dp_id is not None:
+                _LOGGER.debug("DP '%s' found in schema: %s", code, dp_id)
+                return dp_id
+        
+        if fallback is not None:
+            _LOGGER.warning("DP '%s' not found in schema, using fallback: %s", code, fallback)
+            return fallback
+        
+        _LOGGER.error("DP '%s' not found in schema and no fallback provided", code)
+        return None
+        
     async def _send_dp_command(self, dp_name: str, value: Any, dp_id: Optional[int] = None) -> bool:
         """
         Universal method for sending DP commands.
@@ -414,11 +437,16 @@ class NeatsvorVacuum:
         Returns:
             True if command was sent successfully
         """
+        # Проверка готовности
+        if not self._encoder or not self._command_sender:
+            _LOGGER.warning("Device not ready (encoder/command_sender not initialized), command '%s' skipped", dp_name)
+            return False
+        
         try:
             if dp_id is None:
                 dp_id = self.dp_manager.get_id(dp_name)
 
-            if dp_id:
+            if dp_id is not None:
                 command_bytes = self._encoder.create_dp_command(dp_id, value)
                 await self._command_sender.publish_command(command_bytes)
                 _LOGGER.debug("Command sent: %s=%s", dp_name, value)
@@ -490,6 +518,11 @@ class NeatsvorVacuum:
     async def start_room_clean(self, room_ids: List[int]) -> bool:
         """Room cleaning."""
         try:
+            dp_id = self._get_dp_id('room_clean', 31)
+                    if dp_id is None:
+                        _LOGGER.error("Cannot get DP ID for room_clean")
+                        return False
+
             # Setup protobuf path
             proto_dir = Path(__file__).parent.parent / "protobuf"
             if str(proto_dir) not in sys.path:
@@ -507,10 +540,7 @@ class NeatsvorVacuum:
             body_any = any_pb2.Any()
             body_any.Pack(room_data)
 
-            command_bytes = self._encoder.create_dp_command(
-                self.DP_ROOM_CLEAN,
-                body_any.SerializeToString()
-            )
+            command_bytes = self._encoder.create_dp_command(dp_id, body_any.SerializeToString())
 
             await self._command_sender.publish_command(command_bytes)
             _LOGGER.info("Room clean command sent: %s", room_ids)
@@ -524,11 +554,14 @@ class NeatsvorVacuum:
         """Save current map as reference on the device."""
         _LOGGER.info("Saving reference map")
         try:
+            dp_id = self._get_dp_id('map_reuse', 30)
+            if dp_id is None:
+                _LOGGER.error("Cannot get DP ID for map_reuse")
+                return False
+
             from custom_components.neatsvor.liboshome.protobuf import sweeper_any_pb2
             from google.protobuf import any_pb2
 
-            # Используем UseMap с map_id = 0 (текущая карта)
-            # Это соответствует "save as reference"
             use_map = sweeper_any_pb2.UseMap()
             use_map.map_id = 0
             use_map.url = ""
@@ -537,8 +570,8 @@ class NeatsvorVacuum:
             body_any = any_pb2.Any()
             body_any.Pack(use_map)
 
-            await self.send_raw_command(30, body_any.SerializeToString())
-            _LOGGER.info("Reference map save command sent")
+            await self.send_raw_command(dp_id, body_any.SerializeToString())
+            _LOGGER.info("Reference map save command sent (DP %s)", dp_id)
             return True
 
         except Exception as e:
@@ -546,20 +579,17 @@ class NeatsvorVacuum:
             return False
 
     async def restore_reference_map(self, map_id: int, map_url: str = "", map_md5: str = "") -> bool:
-        """
-        Restore reference map using DP 30 (map_reuse).
-        
-        Args:
-            map_id: Device map ID (from cloud map)
-            map_url: URL to download map (optional)
-            map_md5: MD5 checksum (optional)
-        """
+        """Restore reference map using DP 30 (map_reuse)."""
         _LOGGER.info("Restoring reference map %s...", map_id)
         try:
+            dp_id = self._get_dp_id('map_reuse', 30)
+            if dp_id is None:
+                _LOGGER.error("Cannot get DP ID for map_reuse")
+                return False
+
             from custom_components.neatsvor.liboshome.protobuf import sweeper_any_pb2
             from google.protobuf import any_pb2
 
-            # Используем UseMap с ID сохранённой карты
             use_map = sweeper_any_pb2.UseMap()
             use_map.map_id = map_id
             if map_url:
@@ -570,10 +600,10 @@ class NeatsvorVacuum:
             body_any = any_pb2.Any()
             body_any.Pack(use_map)
 
-            command_bytes = self._encoder.create_dp_command(30, body_any.SerializeToString())
+            command_bytes = self._encoder.create_dp_command(dp_id, body_any.SerializeToString())
             await self._command_sender.publish_command(command_bytes)
 
-            _LOGGER.info("Restore command sent for map %s", map_id)
+            _LOGGER.info("Restore command sent for map %s (DP %s)", map_id, dp_id)
             return True
 
         except Exception as e:
@@ -630,40 +660,32 @@ class NeatsvorVacuum:
             return False
 
     async def use_cloud_map(self, map_id: int, map_url: str, map_md5: str) -> bool:
-        """
-        Use a cloud map as the current map (DP 30).
-        """
+        """Use a cloud map as the current map (DP 30)."""
         _LOGGER.info("Using cloud map %s as current map", map_id)
         try:
+            dp_id = self._get_dp_id('map_reuse', 30)
+            if dp_id is None:
+                _LOGGER.error("Cannot get DP ID for map_reuse")
+                return False
+
             from custom_components.neatsvor.liboshome.protobuf import sweeper_any_pb2
             from google.protobuf import any_pb2
-            import base64
 
-            # Create UseMap message exactly as in the original app
             use_map = sweeper_any_pb2.UseMap()
             use_map.map_id = map_id
             use_map.url = map_url
             use_map.md5 = map_md5
 
-            _LOGGER.debug("UseMap: id=%s, url=%s, md5=%s", map_id, map_url, map_md5)
-
-            # Use encoder directly
-            command_bytes = self._encoder.create_dp_command(30, use_map)
-
-            _LOGGER.debug("Command bytes length: %s", len(command_bytes))
-
-            # Send directly
+            command_bytes = self._encoder.create_dp_command(dp_id, use_map)
             await self._command_sender.publish_command(command_bytes)
 
-            _LOGGER.info("Command to use map %s sent", map_id)
+            _LOGGER.info("Command to use map %s sent (DP %s)", map_id, dp_id)
 
-            # Request map update after a short delay
             async def delayed_map_request():
                 await asyncio.sleep(2)
                 await self.request_map()
 
             asyncio.create_task(delayed_map_request())
-
             return True
 
         except Exception as e:
@@ -676,10 +698,13 @@ class NeatsvorVacuum:
         """Save current map to cloud (DP 14)."""
         _LOGGER.info("Saving map to cloud")
         try:
-            # For DP 14 send None (empty message)
-            await self.send_raw_command(14, None)
+            dp_id = self._get_dp_id('map_save', 14)
+            if dp_id is None:
+                _LOGGER.error("Cannot get DP ID for map_save")
+                return False
 
-            _LOGGER.info("Command to save map to cloud sent")
+            await self.send_raw_command(dp_id, None)
+            _LOGGER.info("Command to save map to cloud sent (DP %s)", dp_id)
             return True
 
         except Exception as e:
@@ -1015,6 +1040,11 @@ class NeatsvorVacuum:
         """Clean rooms using saved presets from map."""
         try:
             _LOGGER.info("start_room_clean_with_preset called with rooms: %s", room_ids)
+            
+            dp_id = self._get_dp_id('room_clean', 31)
+            if dp_id is None:
+                _LOGGER.error("Cannot get DP ID for room_clean")
+                return False
 
             # Get presets from current map (for logging, not for sending)
             presets = await self.get_room_presets()
@@ -1047,7 +1077,7 @@ class NeatsvorVacuum:
             serialized = body_any.SerializeToString()
             _LOGGER.debug("RoomAttrs serialized size: %s bytes", len(serialized))
 
-            command_bytes = self._encoder.create_dp_command(31, serialized)
+            command_bytes = self._encoder.create_dp_command(dp_id, serialized)
             _LOGGER.debug("Command size: %s bytes", len(command_bytes))
 
             await self._command_sender.publish_command(command_bytes)
@@ -1070,9 +1100,13 @@ class NeatsvorVacuum:
     async def zone_clean(self, x1: int, y1: int, x2: int, y2: int, repeats: int = 1) -> bool:
         """Clean a specific zone with coordinates."""
         try:
+            dp_id = self._get_dp_id('zone_clean', 32)
+            if dp_id is None:
+                _LOGGER.error("Cannot get DP ID for zone_clean")
+                return False
+
             from custom_components.neatsvor.liboshome.mqtt.zone_encoder import encode_zone_clean_command
             
-            # Получаем текущую карту для origin
             map_data = self._map_data
             if not map_data:
                 _LOGGER.error("No map data available for zone cleaning")
@@ -1081,35 +1115,36 @@ class NeatsvorVacuum:
             origin_x = map_data.get('origin', {}).get('x', 0)
             origin_y = map_data.get('origin', {}).get('y', 0)
             
-            # Используем общую функцию для пересчета координат (уже вычитает origin)
             robot_x1, robot_y1, robot_x2, robot_y2 = calculate_zone_coordinates(
                 x1, y1, x2, y2, origin_x, origin_y
             )
             
-            # Кодируем команду (НЕ добавляет origin повторно!)
-            command_bytes = await encode_zone_clean_command(self._encoder, robot_x1, robot_y1, robot_x2, robot_y2, repeats)
+            command_bytes = await encode_zone_clean_command(
+                self._encoder, dp_id, robot_x1, robot_y1, robot_x2, robot_y2, repeats
+            )
             await self._command_sender.publish_command(command_bytes)
             
-            _LOGGER.info("Zone clean command sent: (%s,%s)-(%s,%s) x%s", robot_x1, robot_y1, robot_x2, robot_y2, repeats)
+            _LOGGER.info("Zone clean command sent: (%s,%s)-(%s,%s) x%s (DP %s)", 
+                         robot_x1, robot_y1, robot_x2, robot_y2, repeats, dp_id)
             return True
             
         except Exception as e:
             _LOGGER.error("Zone clean error: %s", e)
             return False
 
-    async def multiple_zones_clean(self, zones: List[Tuple[int, int, int, int, int]]) -> bool:
-        """
-        Clean multiple zones.
 
-        Args:
-            zones: List of zones, each = (x1, y1, x2, y2, repeats)
-        """
+    async def multiple_zones_clean(self, zones: List[Tuple[int, int, int, int, int]]) -> bool:
+        """Clean multiple zones."""
         _LOGGER.info("Cleaning %s zones", len(zones))
 
         try:
+            dp_id = self._get_dp_id('zone_clean', 32)
+            if dp_id is None:
+                _LOGGER.error("Cannot get DP ID for zone_clean")
+                return False
+
             from custom_components.neatsvor.liboshome.mqtt.zone_encoder import encode_multiple_zones_command
             
-            # Получаем текущую карту для origin
             map_data = self._map_data
             if not map_data:
                 _LOGGER.error("No map data available for multiple zone cleaning")
@@ -1118,18 +1153,15 @@ class NeatsvorVacuum:
             origin_x = map_data.get('origin', {}).get('x', 0)
             origin_y = map_data.get('origin', {}).get('y', 0)
             
-            # Пересчитываем координаты для каждой зоны с учетом origin
             adjusted_zones = []
             for zone in zones:
                 if len(zone) >= 4:
                     x1, y1, x2, y2 = zone[:4]
                     repeats = zone[4] if len(zone) > 4 else 1
                     
-                    # Используем общую функцию для пересчета координат (вычитает origin)
                     robot_x1, robot_y1, robot_x2, robot_y2 = calculate_zone_coordinates(
                         x1, y1, x2, y2, origin_x, origin_y
                     )
-                    
                     adjusted_zones.append((robot_x1, robot_y1, robot_x2, robot_y2, repeats))
                 else:
                     _LOGGER.error("Invalid zone format: %s", zone)
@@ -1139,11 +1171,10 @@ class NeatsvorVacuum:
                 _LOGGER.error("No valid zones after adjustment")
                 return False
             
-            # Кодируем команду со скорректированными координатами
-            command_bytes = await encode_multiple_zones_command(self._encoder, adjusted_zones)
+            command_bytes = await encode_multiple_zones_command(self._encoder, dp_id, adjusted_zones)
             await self._command_sender.publish_command(command_bytes)
 
-            _LOGGER.info("Command for %s zones sent (adjusted for origin)", len(adjusted_zones))
+            _LOGGER.info("Command for %s zones sent (DP %s)", len(adjusted_zones), dp_id)
             return True
 
         except Exception as e:

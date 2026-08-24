@@ -18,15 +18,14 @@ class MqttMessageRouter:
         self.client_id = client_id
         self.mac = mac
 
-        # Initialize ALL handlers
-        self._handlers: Dict[str, Any] = {
-            'MAP_': MapMessageHandler(mac),
-            'MAP_UNZIP_': MapMessageHandler(mac),  # Same handler
-            'STATE_': StateMessageHandler(mac),
-            'DP_DEV_': DpMessageHandler(mac),
-            'DEVICE_ON_LINE_': None,  # No handling
-            'DP_APP_': None,          # No handling
-        }
+        self._handlers = [
+            ('MAP_UNZIP_', MapMessageHandler(mac)),
+            ('MAP_', MapMessageHandler(mac)),
+            ('STATE_', StateMessageHandler(mac)),
+            ('DP_DEV_', DpMessageHandler(mac)),
+            ('DEVICE_ON_LINE_', None),
+            ('DP_APP_', None),
+        ]
 
         # Lists for callbacks
         self._map_callbacks: List[Callable] = []
@@ -45,7 +44,7 @@ class MqttMessageRouter:
         _LOGGER.debug("RX Topic: %s, Length: %s", topic_str, len(payload))
 
         # Find appropriate handler by topic prefix
-        for prefix, handler in self._handlers.items():
+        for prefix, handler in self._handlers:
             if topic_str.startswith(prefix):
                 if handler is None:
                     _LOGGER.debug("Topic without handler: %s", topic_str)

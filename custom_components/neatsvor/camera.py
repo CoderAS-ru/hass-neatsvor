@@ -73,9 +73,8 @@ class NeatsvorLiveCamera(CoordinatorEntity, Camera):
         """When entity is added to hass."""
         await super().async_added_to_hass()
         _LOGGER.info("Live camera added to hass, requesting map...")
-        
-        # Принудительно запрашиваем карту после добавления в hass
-        await self._request_map_with_retry()
+        # Запускаем в фоне, не блокируя загрузку
+        asyncio.create_task(self._request_map_with_retry())
 
     async def _request_map_with_retry(self, retry_count=5):
         """Request map with retry."""

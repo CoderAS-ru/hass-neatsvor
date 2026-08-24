@@ -1113,16 +1113,6 @@ class NeatsvorRoomPresetSensor(CoordinatorEntity, SensorEntity):
             return
 
         try:
-            if hasattr(self.coordinator.vacuum, '_current_map_metadata'):
-                metadata = self.coordinator.vacuum._current_map_metadata
-                if metadata and metadata.rooms:
-                    self._presets = metadata.room_presets
-                    self._rooms = [r.to_dict() for r in metadata.rooms.values()]
-                    self._attr_native_value = f"{len(self._presets)} presets"
-                    _LOGGER.debug("Loaded %s presets from MapProcessor", len(self._presets))
-                    self.async_write_ha_state()
-                    return
-
             if hasattr(self.coordinator.vacuum, '_map_data') and self.coordinator.vacuum._map_data:
                 map_data = self.coordinator.vacuum._map_data
                 if 'raw' in map_data and hasattr(map_data['raw'], 'room_info'):
@@ -1157,7 +1147,7 @@ class NeatsvorRoomPresetSensor(CoordinatorEntity, SensorEntity):
 
         except Exception as e:
             _LOGGER.error("Error updating room presets: %s", e, exc_info=True)
-
+        
     @property
     def extra_state_attributes(self) -> dict:
         """Return presets."""
@@ -1260,17 +1250,6 @@ class NeatsvorCurrentMapPresetSensor(CoordinatorEntity, SensorEntity):
             return
 
         try:
-            if hasattr(self.coordinator.vacuum, '_current_map_metadata'):
-                metadata = self.coordinator.vacuum._current_map_metadata
-                if metadata and metadata.rooms:
-                    self._presets = metadata.room_presets
-                    self._rooms = [r.to_dict() for r in metadata.rooms.values()]
-                    self._map_time = metadata.timestamp
-                    self._attr_native_value = f"{len(self._presets)} presets"
-                    _LOGGER.debug("Current map: %s presets from %s", len(self._presets), self._map_time)
-                    self.async_write_ha_state()
-                    return
-
             if hasattr(self.coordinator.vacuum, '_map_data') and self.coordinator.vacuum._map_data:
                 map_data = self.coordinator.vacuum._map_data
                 if 'raw' in map_data and hasattr(map_data['raw'], 'room_info'):
@@ -1278,6 +1257,7 @@ class NeatsvorCurrentMapPresetSensor(CoordinatorEntity, SensorEntity):
                     if hasattr(raw.room_info, 'room_attrs'):
                         self._presets = {}
                         self._rooms = []
+                        self._map_time = datetime.now()
 
                         room_names = {r['id']: r['name'] for r in map_data.get('room_names', [])}
 
@@ -1300,11 +1280,12 @@ class NeatsvorCurrentMapPresetSensor(CoordinatorEntity, SensorEntity):
                             })
 
                         self._attr_native_value = f"{len(self._presets)} presets"
+                        _LOGGER.info("Loaded %s presets from current live map", len(self._presets))
                         self.async_write_ha_state()
 
         except Exception as e:
             _LOGGER.error("Error updating current map presets: %s", e)
-
+        
     @property
     def extra_state_attributes(self) -> dict:
         """Return presets."""
@@ -1508,11 +1489,26 @@ class NeatsvorPresetComparisonSensor(CoordinatorEntity, SensorEntity):
         self._cloud_rooms = []
         self._differences = []
 
-        if hasattr(self.coordinator.vacuum, '_current_map_metadata'):
-            metadata = self.coordinator.vacuum._current_map_metadata
-            if metadata:
-                self._current_presets = metadata.room_presets
-                self._current_rooms = [r.to_dict() for r in metadata.rooms.values()]
+        # Получаем текущие пресеты из _map_data
+        if hasattr(self.coordinator.vacuum, '_map_data') and self.coordinator.vacuum._map_data:
+            map_data = self.coordinator.vacuum._map_data
+            if 'raw' in map_data and hasattr(map_data['raw'], 'room_info'):
+                raw = map_data['raw']
+                if hasattr(raw.room_info, 'room_attrs'):
+                    room_names = {r['id']: r['name'] for r in map_data.get('room_names', [])}
+                    for attr in raw.room_info.room_attrs:
+                        room_id = attr.room_id
+                        self._current_presets[room_id] = {
+                            'fan': attr.fan_level,
+                            'water': attr.tank_level,
+                            'times': attr.clean_times,
+                            'mode': attr.clean_mode
+                        }
+                        self._current_rooms.append({
+                            'id': room_id,
+                            'name': room_names.get(room_id, f"Room {room_id}"),
+                            'preset': self._current_presets[room_id]
+                        })
 
         if hasattr(self.coordinator, 'cloud_maps_sensor'):
             sensor = self.coordinator.cloud_maps_sensor
