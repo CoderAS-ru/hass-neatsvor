@@ -1,6 +1,7 @@
 """Map decoder for Neatsvor."""
 
 import gzip
+import logging
 import numpy as np
 from typing import Dict, Any, List, Tuple
 import struct
@@ -10,6 +11,8 @@ import asyncio
 import os
 import sys
 
+_LOGGER = logging.getLogger(__name__)
+
 proto_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'protobuf')
 if proto_dir not in sys.path:
     sys.path.insert(0, proto_dir)
@@ -18,7 +21,7 @@ try:
     import sweeper_map_pb2
     HAS_PROTOBUF = True
 except ImportError as e:
-    print(f"Error importing protobuf from {proto_dir}: {e}")
+    _LOGGER.error("Error importing protobuf from %s: %s", proto_dir, e)
     HAS_PROTOBUF = False
 
 
@@ -46,13 +49,13 @@ class MapDecoder:
         loop = asyncio.get_event_loop()
         data = await loop.run_in_executor(None, gzip.decompress, compressed)
 
-        print(f"Loaded {len(data)} bytes")
+        _LOGGER.debug("Loaded %s bytes", len(data))
 
         # Parse protobuf in executor
         map_data = await loop.run_in_executor(None, _parse_map_data, data)
 
-        print(f"Map: {map_data.width}x{map_data.height}")
-        print(f"Resolution: {map_data.resolution}")
+        _LOGGER.debug("Map: %sx%s", map_data.width, map_data.height)
+        _LOGGER.debug("Resolution: %s", map_data.resolution)
 
         if not map_data.HasField('map_info'):
             raise ValueError("No map data in map_info")
@@ -72,7 +75,7 @@ class MapDecoder:
                     if point.x != -1 or point.y != -1:
                         trajectory_points.append((point.x, point.y))
 
-        print(f"Trajectory: {len(trajectory_points)} points (after filtering (-1,-1))")
+        _LOGGER.debug("Trajectory: %s points (after filtering (-1,-1))", len(trajectory_points))
 
         # Extract positions
         robot_pos = None
@@ -124,14 +127,14 @@ class MapDecoder:
         with gzip.open(filepath, 'rb') as f:
             data = f.read()
 
-        print(f"Loaded {len(data)} bytes")
+        _LOGGER.debug("Loaded %s bytes", len(data))
 
         # Parse as MapData
         map_data = sweeper_map_pb2.MapData()
         map_data.ParseFromString(data)
 
-        print(f"Map: {map_data.width}x{map_data.height}")
-        print(f"Resolution: {map_data.resolution}")
+        _LOGGER.debug("Map: %sx%s", map_data.width, map_data.height)
+        _LOGGER.debug("Resolution: %s", map_data.resolution)
 
         # Check for map data
         if not map_data.HasField('map_info'):
@@ -153,7 +156,7 @@ class MapDecoder:
                     if point.x != -1 or point.y != -1:
                         trajectory_points.append((point.x, point.y))
 
-        print(f"Trajectory: {len(trajectory_points)} points (after filtering (-1,-1))")
+        _LOGGER.debug("Trajectory: %s points (after filtering (-1,-1))", len(trajectory_points))
 
         # Extract positions
         robot_pos = None
@@ -220,11 +223,11 @@ class MapDecoder:
                                 # If not text, save as hex
                                 archive[member.name] = content.hex()
 
-            print(f"DevMap archive: {len(archive)} files")
+            _LOGGER.debug("DevMap archive: %s files", len(archive))
             return archive
 
         except Exception as e:
-            print(f"Error decoding devMap: {e}")
+            _LOGGER.error("Error decoding devMap: %s", e)
             return {}
 
     @staticmethod
@@ -252,7 +255,7 @@ class MapDecoder:
             elif cell_type == 2:  # Wall
                 walls.append((cell_x, cell_y))
 
-        print(f"Decoded: {len(data_list)} cells, {len(rooms)} rooms, {len(walls)} walls")
+        _LOGGER.debug("Decoded: %s cells, %s rooms, %s walls", len(data_list), len(rooms), len(walls))
         return map_array, rooms, walls
 
     @staticmethod
@@ -266,7 +269,7 @@ class MapDecoder:
                     if point.x != -1 or point.y != -1:
                         trajectory.append((point.x, point.y))
 
-        print(f"Trajectory: {len(trajectory)} points (after filtering (-1,-1))")
+        _LOGGER.debug("Trajectory: %s points (after filtering (-1,-1))", len(trajectory))
         return trajectory
 
     @staticmethod
@@ -286,8 +289,8 @@ class MapDecoder:
         with gzip.open(filepath, 'rb') as f:
             data = f.read()
 
-        print(f"Data size: {len(data)} bytes")
-        print(f"First 50 bytes (hex): {data[:50].hex()}")
+        _LOGGER.info("Data size: %s bytes", len(data))
+        _LOGGER.debug("First 50 bytes (hex): %s", data[:50].hex())
 
         # Try different protobuf messages
         try:
@@ -295,32 +298,32 @@ class MapDecoder:
             map_data = sweeper_map_pb2.MapData()
             map_data.ParseFromString(data[:1000])  # Parse only part
 
-            print("\n✅ Successfully parsed as MapData")
-            print(f"  Width: {map_data.width}")
-            print(f"  Height: {map_data.height}")
-            print(f"  Resolution: {map_data.resolution}")
+            _LOGGER.info("Successfully parsed as MapData")
+            _LOGGER.info("  Width: %s", map_data.width)
+            _LOGGER.info("  Height: %s", map_data.height)
+            _LOGGER.info("  Resolution: %s", map_data.resolution)
 
             if map_data.HasField('map_info'):
-                print(f"  Map data: {len(map_data.map_info.data)} values")
+                _LOGGER.info("  Map data: %s values", len(map_data.map_info.data))
 
             if map_data.HasField('trace_info'):
-                print(f"  Trace segments: {len(map_data.trace_info.data)}")
+                _LOGGER.info("  Trace segments: %s", len(map_data.trace_info.data))
                 total_points = sum(len(td.points) for td in map_data.trace_info.data)
-                print(f"  Total trace points: {total_points}")
+                _LOGGER.info("  Total trace points: %s", total_points)
 
             return True
 
         except Exception as e:
-            print(f"Not MapData: {e}")
+            _LOGGER.debug("Not MapData: %s", e)
 
         try:
             # Try as MqttMsgMap
             msg = sweeper_map_pb2.MqttMsgMap()
             msg.ParseFromString(data[:1000])
-            print("\n✅ Successfully parsed as MqttMsgMap")
+            _LOGGER.info("Successfully parsed as MqttMsgMap")
             return True
         except Exception as e:
-            print(f"Not MqttMsgMap: {e}")
+            _LOGGER.debug("Not MqttMsgMap: %s", e)
 
         return False
 
@@ -333,20 +336,20 @@ class MapDecoder:
         if not HAS_PROTOBUF:
             raise ImportError("Protobuf modules not loaded")
 
-        print(f"[MapDecoder] Received MQTT: {len(payload)} bytes")
+        _LOGGER.debug("Received MQTT: %s bytes", len(payload))
 
         # 1. Decompress GZIP if needed
         if len(payload) >= 2 and payload[:2] == b'\x1f\x8b':
             try:
                 import gzip
                 payload = gzip.decompress(payload)
-                print(f"[MapDecoder] Decompressed GZIP: {len(payload)} bytes")
+                _LOGGER.debug("Decompressed GZIP: %s bytes", len(payload))
             except Exception as e:
-                print(f"[MapDecoder] GZIP decompression error: {e}")
+                _LOGGER.debug("GZIP decompression error: %s", e)
 
         # 2. Now payload starts with 0a181211... (as in parse_any_protobuf.py)
         #    This is a message with two fields: MAC and Any
-        print(f"[MapDecoder] HEX start: {payload[:30].hex()}")
+        _LOGGER.debug("HEX start: %s", payload[:30].hex())
 
         try:
             # 3. Parse structure: [field1: MAC][field2: Any]
@@ -372,7 +375,7 @@ class MapDecoder:
                         break
                     shift += 7
 
-                print(f"[MapDecoder] Any length: {any_length} bytes")
+                _LOGGER.debug("Any length: %s bytes", any_length)
 
                 # 5. Parse Any: [type_url][value]
                 # Skip type_url (field=1 in Any)
@@ -391,7 +394,7 @@ class MapDecoder:
                         shift += 7
 
                     offset += url_length  # Skip the URL itself
-                    print(f"[MapDecoder] Type URL skipped: {url_length} bytes")
+                    _LOGGER.debug("Type URL skipped: %s bytes", url_length)
 
                 # 6. Now value (field=2 in Any) - THIS IS THE ACTUAL MAP DATA!
                 if offset < len(payload) and payload[offset] == 0x12:
@@ -408,38 +411,38 @@ class MapDecoder:
                             break
                         shift += 7
 
-                    print(f"[MapDecoder] Value length: {value_length} bytes")
+                    _LOGGER.debug("Value length: %s bytes", value_length)
 
                     # 7. Extract map data
                     map_data_bytes = payload[offset:offset + value_length]
-                    print(f"[MapDecoder] Map data: {len(map_data_bytes)} bytes")
-                    print(f"[MapDecoder] Map HEX: {map_data_bytes[:20].hex()}")
+                    _LOGGER.debug("Map data: %s bytes", len(map_data_bytes))
+                    _LOGGER.debug("Map HEX: %s", map_data_bytes[:20].hex())
 
                     # 8. Parse as MapData
                     map_data = sweeper_map_pb2.MapData()
                     map_data.ParseFromString(map_data_bytes)
 
-                    print(f"[MapDecoder] ✅ Success! Map: {map_data.width}x{map_data.height}")
+                    _LOGGER.info("Success! Map: %sx%s", map_data.width, map_data.height)
 
                     # 9. Use helper method to convert
                     return MapDecoder._protobuf_to_dict(map_data)
 
         except Exception as e:
-            print(f"[MapDecoder] Parse error: {e}")
+            _LOGGER.debug("Parse error: %s", e)
             import traceback
-            traceback.print_exc()
+            _LOGGER.debug("Traceback: %s", traceback.format_exc())
 
         # If the new scheme didn't work, try parsing directly
         try:
-            print(f"[MapDecoder] Trying direct parsing...")
+            _LOGGER.debug("Trying direct parsing...")
             map_data = sweeper_map_pb2.MapData()
             map_data.ParseFromString(payload)
 
             if map_data.width > 0 and map_data.height > 0:
-                print(f"[MapDecoder] ✅ Direct parsing: {map_data.width}x{map_data.height}")
+                _LOGGER.debug("Direct parsing: %sx%s", map_data.width, map_data.height)
                 return MapDecoder._protobuf_to_dict(map_data)
-        except:
-            pass
+        except Exception as e:
+            _LOGGER.debug("Direct parsing failed: %s", e)
 
         raise ValueError("Failed to decode MQTT message as map")
 
@@ -522,5 +525,5 @@ class MapDecoder:
             if len(segment) > 1:
                 segments.append(segment)
 
-        print(f"Trace segments: {len(segments)}")
+        _LOGGER.debug("Trace segments: %s", len(segments))
         return segments

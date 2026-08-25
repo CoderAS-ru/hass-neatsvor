@@ -703,7 +703,7 @@ class NeatsvorVacuum:
                 _LOGGER.error("Cannot get DP ID for map_save")
                 return False
 
-            await self.send_raw_command(dp_id, None)
+            await self.send_raw_command(dp_id, True)  # ← None → True
             _LOGGER.info("Command to save map to cloud sent (DP %s)", dp_id)
             return True
 
@@ -926,22 +926,22 @@ class NeatsvorVacuum:
 
             # Special attention to DP 32
             if dp_id == 32:
-                _LOGGER.warning("DP 32 RECEIVED! Type: %s", type(value))
+                _LOGGER.debug("DP 32 RECEIVED! Type: %s", type(value))
                 if isinstance(value, bytes):
-                    _LOGGER.warning("Bytes length: %s", len(value))
-                    _LOGGER.warning("First 50 bytes: %s", value[:50].hex())
+                    _LOGGER.debug("Bytes length: %s", len(value))
+                    _LOGGER.debug("First 50 bytes: %s", value[:50].hex())
                     # Try to parse
                     try:
                         from custom_components.neatsvor.liboshome.protobuf import sweeper_com_pb2
                         zone_clean = sweeper_com_pb2.ZoneClean()
                         zone_clean.ParseFromString(value)
-                        _LOGGER.warning("Parsed: times=%s", zone_clean.times)
+                        _LOGGER.debug("Parsed: times=%s", zone_clean.times)
                         for i, zone in enumerate(zone_clean.zones):
-                            _LOGGER.warning("Zone %s: number=%s", i, zone.number)
+                            _LOGGER.debug("Zone %s: number=%s", i, zone.number)
                             for point in zone.points:
-                                _LOGGER.warning("point: (%s, %s)", point.x, point.y)
+                                _LOGGER.debug("point: (%s, %s)", point.x, point.y)
                     except Exception as e:
-                        _LOGGER.warning("Failed to parse: %s", e)
+                        _LOGGER.debug("Failed to parse: %s", e)
 
             # Log status change
             if dp_id == 5:

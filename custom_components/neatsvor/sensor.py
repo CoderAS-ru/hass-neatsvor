@@ -1452,6 +1452,9 @@ class NeatsvorPresetComparisonSensor(CoordinatorEntity, SensorEntity):
                         json_path = None
                         if m.get('json_path'):
                             json_path = Path(m['json_path'])
+                        elif m.get('local_path'):
+                            bv_path = Path(m['local_path'])
+                            json_path = bv_path.parent.parent / "json" / f"{bv_path.stem}.json"
 
                         if json_path and json_path.exists():
                             try:

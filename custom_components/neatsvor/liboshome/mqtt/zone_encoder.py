@@ -23,10 +23,10 @@ async def encode_zone_clean_command(encoder, dp_id: int, x1: int, y1: int, x2: i
     try:
         from custom_components.neatsvor.liboshome.protobuf import sweeper_com_pb2
 
-        scaled_x1 = int(round(x1 * 10))
-        scaled_y1 = int(round(y1 * 10))
-        scaled_x2 = int(round(x2 * 10))
-        scaled_y2 = int(round(y2 * 10))
+        scaled_x1 = int(round(x1 * COORDINATE_SCALE))
+        scaled_y1 = int(round(y1 * COORDINATE_SCALE))
+        scaled_x2 = int(round(x2 * COORDINATE_SCALE))
+        scaled_y2 = int(round(y2 * COORDINATE_SCALE))
 
         final_x1 = min(scaled_x1, scaled_x2)
         final_y1 = min(scaled_y1, scaled_y2)
@@ -81,10 +81,10 @@ async def encode_multiple_zones_command(encoder, dp_id: int, zones: List[Tuple[i
             x1, y1, x2, y2 = zone[:4]
             repeats = zone[4] if len(zone) > 4 else 1
 
-            scaled_x1 = int(round(x1 * 10))
-            scaled_y1 = int(round(y1 * 10))
-            scaled_x2 = int(round(x2 * 10))
-            scaled_y2 = int(round(y2 * 10))
+            scaled_x1 = int(round(x1 * COORDINATE_SCALE))
+            scaled_y1 = int(round(y1 * COORDINATE_SCALE))
+            scaled_x2 = int(round(x2 * COORDINATE_SCALE))
+            scaled_y2 = int(round(y2 * COORDINATE_SCALE))
 
             final_x1 = min(scaled_x1, scaled_x2)
             final_y1 = min(scaled_y1, scaled_y2)
