@@ -38,8 +38,8 @@ class NeatsvorVacuum(CoordinatorEntity, StateVacuumEntity):
     """Neatsvor vacuum entity."""
 
     _attr_has_entity_name = True
-    _attr_device_info = None  # Will be set in __init__
-    _attr_translation_key = "vacuum"  # This will look for entity.vacuum.neatsvor_vacuum.name
+    _attr_device_info = None
+    _attr_translation_key = "vacuum"
 
     def __init__(self, coordinator):
         """Initialize."""
@@ -60,7 +60,6 @@ class NeatsvorVacuum(CoordinatorEntity, StateVacuumEntity):
             | VacuumEntityFeature.SEND_COMMAND
         )
 
-        # Initialize dynamic features
         self._init_dynamic_features()
 
     def _init_dynamic_features(self):
@@ -80,82 +79,18 @@ class NeatsvorVacuum(CoordinatorEntity, StateVacuumEntity):
             if speeds:
                 self._attr_fan_speed_list = speeds
 
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from coordinator."""
+        if self.coordinator and self.coordinator.data:
+            # Просто обновляем состояние, чтобы HA знал об изменениях
+            self.async_write_ha_state()
+
     def _get_localized_fan_speed(self, fan_speed: str) -> str:
         """Get localized fan speed display name."""
         language = self.hass.config.language if self.hass else "en"
         if language == "ru":
             return SUCTION_MAP_RU.get(fan_speed, fan_speed.capitalize())
         return SUCTION_MAP.get(fan_speed, fan_speed.capitalize())
-
-    @property
-    def activity(self) -> VacuumActivity | None:
-        """Return vacuum activity for internal HA use."""
-        if not self.coordinator or not self.coordinator.data:
-            return None
-
-        status_text = self.coordinator.data.get("status_text", "").lower()
-
-        activity_map = {
-            # Русские ключи
-            "уборк": VacuumActivity.CLEANING,
-            "возврат": VacuumActivity.RETURNING,
-            "зарядк": VacuumActivity.DOCKED,
-            "заряжен": VacuumActivity.DOCKED,
-            "приостановлен": VacuumActivity.PAUSED,
-            "ошибк": VacuumActivity.ERROR,
-            "сон": VacuumActivity.IDLE,
-            "ожидание": VacuumActivity.IDLE,
-            "перемещение": VacuumActivity.RETURNING,
-            # Английские ключи (для совместимости)
-            "cleaning": VacuumActivity.CLEANING,
-            "returning": VacuumActivity.RETURNING,
-            "charging": VacuumActivity.DOCKED,
-            "docked": VacuumActivity.DOCKED,
-            "paused": VacuumActivity.PAUSED,
-            "error": VacuumActivity.ERROR,
-            "idle": VacuumActivity.IDLE,
-        }
-
-        for key, value in activity_map.items():
-            if key in status_text:
-                return value
-
-        return VacuumActivity.IDLE
-
-    @property
-    def fan_speed(self) -> Optional[str]:
-        """Return current fan speed (internal code, not localized)."""
-        if not self.coordinator.data:
-            return None
-        fan_speed = self.coordinator.data.get("fan_speed")
-        if fan_speed:
-            return fan_speed  # ✅ Возвращаем сырой код
-        return None
-
-    @property
-    def fan_speed_localized(self) -> Optional[str]:
-        """Return localized fan speed for display (used by UI)."""
-        fan_speed = self.fan_speed
-        if fan_speed:
-            return self._get_localized_fan_speed(fan_speed)
-        return None
-
-    @property
-    def entity_picture(self) -> Optional[str]:
-        """Return device picture."""
-        if not self.coordinator.data:
-            return None
-
-        device_details = self.coordinator.data.get("device_details", {})
-        image_url = device_details.get("image_url")
-
-        if image_url:
-            if "?" in image_url:
-                return f"{image_url}&width=256&height=256"
-            else:
-                return f"{image_url}?width=256&height=256"
-
-        return None
 
     # ============= Basic commands =============
 
@@ -193,10 +128,8 @@ class NeatsvorVacuum(CoordinatorEntity, StateVacuumEntity):
         """Set fan speed."""
         _LOGGER.info("Command: SET FAN SPEED %s", fan_speed)
 
-        # Convert localized name back to internal key if needed
         language = self.hass.config.language if self.hass else "en"
         if language == "ru":
-            # Reverse mapping for Russian
             reverse_map = {v: k for k, v in SUCTION_MAP_RU.items()}
             if fan_speed in reverse_map:
                 fan_speed = reverse_map[fan_speed]
@@ -218,7 +151,6 @@ class NeatsvorVacuum(CoordinatorEntity, StateVacuumEntity):
             _LOGGER.error("Invalid fan speed: %s", fan_speed)
             return
 
-        # Используем реальный ID из DP-схемы
         await self.coordinator.vacuum.send_raw_command(fan_dp.id, value)
         await self.coordinator.async_request_refresh()
 
@@ -301,7 +233,6 @@ class NeatsvorVacuum(CoordinatorEntity, StateVacuumEntity):
                     _LOGGER.error("Failed to load reference map")
             else:
                 _LOGGER.error("Method load_reference_map not found")
-
         except Exception as e:
             _LOGGER.error("Error in load_reference_map: %s", e)
 
@@ -313,7 +244,6 @@ class NeatsvorVacuum(CoordinatorEntity, StateVacuumEntity):
                 success = await self.coordinator.vacuum.save_current_map_to_cloud()
                 return success
             else:
-                # Этот метод всегда существует в liboshome/device/vacuum.py
                 _LOGGER.error("Method save_current_map_to_cloud not found")
                 return False
         except Exception as e:
@@ -363,7 +293,6 @@ class NeatsvorVacuum(CoordinatorEntity, StateVacuumEntity):
                     if len(zone) >= 4:
                         x1, y1, x2, y2 = zone[:4]
                         repeats = zone[4] if len(zone) > 4 else 1
-
                         await self.coordinator.vacuum.zone_clean(x1, y1, x2, y2, repeats)
                         return True
                 else:
@@ -386,21 +315,6 @@ class NeatsvorVacuum(CoordinatorEntity, StateVacuumEntity):
         return False
 
     @property
-    def state(self) -> Optional[str]:
-        """Return vacuum state - same as status sensor."""
-        if not self.coordinator or not self.coordinator.data:
-            return None
-        
-        status_text = self.coordinator.data.get("status_text")
-        
-        # Если статус пустой или Unknown — показываем "Неизвестно"
-        if not status_text or status_text == "Unknown":
-            return "Неизвестно"
-        
-        # Возвращаем полный локализованный статус (с деталями ошибок)
-        return status_text
-
-    @property
     def extra_state_attributes(self) -> Dict[str, Any]:
         """Return additional attributes."""
         if not self.coordinator.data:
@@ -412,28 +326,20 @@ class NeatsvorVacuum(CoordinatorEntity, StateVacuumEntity):
         last = data.get("last_clean", {})
 
         attributes = {
-            # Основные свойства
             "water_level": data.get("water_level"),
             "clean_mode": data.get("clean_mode"),
             "status_code": data.get("status_code"),
             "battery_level": data.get("battery_level"),
-            
-            # Расходники
             "filter_lifetime": 0,
             "brush_lifetime": 0,
             "side_brush_lifetime": 0,
-            
-            # Статистика
             "total_cleaned_area": 0,
             "total_cleaned_time": 0,
             "total_cleanings": 0,
-            
-            # Последняя уборка
             "last_clean_area": 0,
             "last_clean_duration": 0,
         }
         
-        # Заполняем расходники
         filter_cons = consumables.get("filter")
         if filter_cons:
             attributes["filter_lifetime"] = filter_cons.get("remaining_percent", 0)
@@ -446,13 +352,11 @@ class NeatsvorVacuum(CoordinatorEntity, StateVacuumEntity):
         if side_brush_cons:
             attributes["side_brush_lifetime"] = side_brush_cons.get("remaining_percent", 0)
         
-        # Заполняем статистику
         if stats:
             attributes["total_cleaned_area"] = stats.get("total_clean_area", 0)
             attributes["total_cleaned_time"] = stats.get("total_clean_time", 0)
             attributes["total_cleanings"] = stats.get("total_cleanings", 0)
         
-        # Заполняем последнюю уборку
         if last:
             attributes["last_clean_area"] = last.get("clean_area", 0)
             attributes["last_clean_duration"] = last.get("clean_duration", 0)
@@ -464,13 +368,105 @@ class NeatsvorVacuum(CoordinatorEntity, StateVacuumEntity):
                 attributes["reference_map_name"] = ref_map.get('name')
                 attributes["reference_map_date"] = ref_map.get('timestamp')
 
-        # Оставляем оригинальные атрибуты расходников для совместимости
         for cons_type, cons_data in consumables.items():
             attributes[f"{cons_type}_remaining"] = cons_data.get("remaining_percent")
             attributes[f"{cons_type}_hours"] = cons_data.get("remaining_hours")
 
-        # Добавляем локализованную скорость для отображения
         if self.fan_speed:
             attributes["fan_speed_display"] = self._get_localized_fan_speed(self.fan_speed)
 
         return attributes
+        
+    @property
+    def state(self) -> Optional[str]:
+        """Return vacuum state - directly from status sensor."""
+        if not self.coordinator or not self.coordinator.hass:
+            return None
+        
+        # Формируем entity_id сенсора статуса
+        device_id = self.coordinator.device_id
+        sensor_entity_id = f"sensor.neatsvor_{device_id}_status"
+        
+        # Получаем состояние из сенсора
+        sensor_state = self.coordinator.hass.states.get(sensor_entity_id)
+        
+        if sensor_state and sensor_state.state:
+            return sensor_state.state
+        
+        # Fallback: пробуем через данные координатора
+        status_text = self.coordinator.data.get("status_text") if self.coordinator.data else None
+        if status_text and status_text != "Unknown":
+            language = self.hass.config.language if self.hass else "en"
+            return get_localized_status(status_text.lower(), language)
+        
+        return "Неизвестно"
+
+    @property
+    def activity(self) -> VacuumActivity | None:
+        """Return vacuum activity for internal HA use."""
+        if not self.coordinator or not self.coordinator.data:
+            return None
+
+        status_text = self.coordinator.data.get("status_text", "").lower()
+
+        activity_map = {
+            # Русские ключи
+            "уборк": VacuumActivity.CLEANING,
+            "возврат": VacuumActivity.RETURNING,
+            "зарядк": VacuumActivity.DOCKED,
+            "заряжен": VacuumActivity.DOCKED,
+            "приостановлен": VacuumActivity.PAUSED,
+            "ошибк": VacuumActivity.ERROR,
+            "сон": VacuumActivity.IDLE,
+            "ожидание": VacuumActivity.IDLE,
+            "перемещение": VacuumActivity.RETURNING,
+            # Английские ключи (для совместимости)
+            "cleaning": VacuumActivity.CLEANING,
+            "returning": VacuumActivity.RETURNING,
+            "charging": VacuumActivity.DOCKED,
+            "docked": VacuumActivity.DOCKED,
+            "paused": VacuumActivity.PAUSED,
+            "error": VacuumActivity.ERROR,
+            "idle": VacuumActivity.IDLE,
+        }
+
+        for key, value in activity_map.items():
+            if key in status_text:
+                return value
+
+        return VacuumActivity.IDLE
+
+    @property
+    def fan_speed(self) -> Optional[str]:
+        """Return current fan speed (internal code, not localized)."""
+        if not self.coordinator.data:
+            return None
+        fan_speed = self.coordinator.data.get("fan_speed")
+        if fan_speed:
+            return fan_speed
+        return None
+
+    @property
+    def fan_speed_localized(self) -> Optional[str]:
+        """Return localized fan speed for display (used by UI)."""
+        fan_speed = self.fan_speed
+        if fan_speed:
+            return self._get_localized_fan_speed(fan_speed)
+        return None
+
+    @property
+    def entity_picture(self) -> Optional[str]:
+        """Return device picture."""
+        if not self.coordinator.data:
+            return None
+
+        device_details = self.coordinator.data.get("device_details", {})
+        image_url = device_details.get("image_url")
+
+        if image_url:
+            if "?" in image_url:
+                return f"{image_url}&width=256&height=256"
+            else:
+                return f"{image_url}?width=256&height=256"
+
+        return None
