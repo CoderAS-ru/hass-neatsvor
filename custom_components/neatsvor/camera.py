@@ -107,26 +107,23 @@ class NeatsvorLiveCamera(CoordinatorEntity, Camera):
                          map_data.get('height', 0))
 
             # ✅ НЕ создаём новый файл, а читаем последний сохранённый
-            if self.coordinator.vacuum.visualizer:
-                realtime_dir = Path("/config/www/neatsvor/maps/realtime")
-                if realtime_dir.exists():
-                    # Ищем последний PNG файл (по времени модификации)
-                    png_files = await asyncio.to_thread(lambda: list(realtime_dir.glob("*.png")))
-                    if png_files:
-                        latest_file = max(png_files, key=lambda f: f.stat().st_mtime)
-                        filename = str(latest_file)
-                        
-                        if filename and Path(filename).exists():
-                            import aiofiles
-                            async with aiofiles.open(filename, 'rb') as f:
-                                self._last_image = await f.read()
-                                self._initial_image_loaded = True
-                                self._image_ready.set()
+            from custom_components.neatsvor.liboshome.map.map_utils import get_latest_realtime_png
 
-                            self._last_update = datetime.now()
-                            self.async_write_ha_state()
-                            _LOGGER.info("Camera updated with map #%s, reading from: %s", 
-                                        self._map_count, latest_file.name)
+            if self.coordinator.vacuum.visualizer:
+                latest_file = await get_latest_realtime_png()
+                if latest_file:
+                    filename = str(latest_file)
+                    if Path(filename).exists():
+                        import aiofiles
+                        async with aiofiles.open(filename, 'rb') as f:
+                            self._last_image = await f.read()
+                            self._initial_image_loaded = True
+                            self._image_ready.set()
+
+                        self._last_update = datetime.now()
+                        self.async_write_ha_state()
+                        _LOGGER.info("Camera updated with map #%s, reading from: %s", 
+                                    self._map_count, latest_file.name)
 
             # Периодически чистим старые карты
             if self._map_count % 10 == 0:

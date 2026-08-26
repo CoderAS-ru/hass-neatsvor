@@ -528,17 +528,16 @@ class NeatsvorMapSensor(CoordinatorEntity, SensorEntity):
                             'mode': attr.clean_mode
                         }
 
+            from custom_components.neatsvor.liboshome.map.map_utils import get_latest_realtime_png
+
             if hasattr(self.coordinator.vacuum, 'visualizer'):
-                realtime_dir = Path("/config/www/neatsvor/maps/realtime")
-                if realtime_dir.exists():
-                    png_files = await asyncio.to_thread(lambda: list(realtime_dir.glob("*.png")))
-                    if png_files:
-                        latest_file = max(png_files, key=lambda f: f.stat().st_mtime)
-                        self._map_path = str(latest_file)
-                        import aiofiles
-                        async with aiofiles.open(latest_file, 'rb') as f:
-                            self._map_image = await f.read()
-                        _LOGGER.debug("Map sensor reading from: %s", latest_file.name)
+                latest_file = await get_latest_realtime_png()
+                if latest_file:
+                    self._map_path = str(latest_file)
+                    import aiofiles
+                    async with aiofiles.open(latest_file, 'rb') as f:
+                        self._map_image = await f.read()
+                    _LOGGER.debug("Map sensor reading from: %s", latest_file.name)
 
             self._last_update = datetime.now()
             self._attr_native_value = f"{len(self._rooms)} rooms"

@@ -2,6 +2,9 @@
 
 import logging
 from typing import Tuple
+import asyncio
+from pathlib import Path
+from typing import Optional
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -52,3 +55,27 @@ def calculate_zone_coordinates(x1: int, y1: int, x2: int, y2: int,
     robot_y2 = (y2 - origin_y) // resolution
     
     return (robot_x1, robot_y1, robot_x2, robot_y2)
+    
+async def get_latest_realtime_png() -> Optional[Path]:
+    """
+    Get the latest realtime map PNG file from the realtime directory.
+    
+    Returns:
+        Path to the latest PNG file or None if no files found.
+    """
+    realtime_dir = Path("/config/www/neatsvor/maps/realtime")
+    if not realtime_dir.exists():
+        return None
+    
+    try:
+        # Используем asyncio.to_thread для неблокирующего чтения файловой системы
+        png_files = await asyncio.to_thread(lambda: list(realtime_dir.glob("*.png")))
+        if not png_files:
+            return None
+        
+        # Сортируем по времени модификации, берём последний
+        latest_file = max(png_files, key=lambda f: f.stat().st_mtime)
+        return latest_file
+    except Exception as e:
+        _LOGGER.debug("Error getting latest realtime PNG: %s", e)
+        return None

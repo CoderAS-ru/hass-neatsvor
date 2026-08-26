@@ -28,7 +28,7 @@ async def async_setup_entry(
         NeatsvorOnlineSensor(coordinator),
         NeatsvorChargingSensor(coordinator),
         NeatsvorDustBinFullSensor(coordinator),
-        NeatsvorMopAttachedSensor(coordinator),
+        # NeatsvorMopAttachedSensor(coordinator) — УДАЛЁН, нет соответствующего DP
     ]
 
     async_add_entities(entities)
@@ -113,31 +113,6 @@ class NeatsvorDustBinFullSensor(CoordinatorEntity, BinarySensorEntity):
 
         status_code = self.coordinator.data.get("status_code")
         return status_code == 18  # dust_box_full
-
-    @property
-    def available(self) -> bool:
-        """Return true if data available."""
-        return self.coordinator.data is not None
-
-
-class NeatsvorMopAttachedSensor(CoordinatorEntity, BinarySensorEntity):
-    _attr_has_entity_name = True
-    _attr_translation_key = "mop_attached"
-    _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
-
-    def __init__(self, coordinator):
-        super().__init__(coordinator)
-        device_id = coordinator.device_id
-        self._attr_unique_id = f"neatsvor_{device_id}_mop_attached"
-        self._attr_device_info = coordinator.device_info
-        self._attr_icon = "mdi:spray"
-
-    @property
-    def is_on(self) -> bool:
-        """Return true if mop is attached."""
-        if not self.coordinator.data:
-            return False
-        return True  # Default to True
 
     @property
     def available(self) -> bool:

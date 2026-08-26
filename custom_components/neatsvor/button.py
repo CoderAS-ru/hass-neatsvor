@@ -27,10 +27,10 @@ async def async_setup_entry(
         NeatsvorSetReferenceMapButton(coordinator),
         NeatsvorRestoreReferenceMapButton(coordinator),
         NeatsvorDownloadMapButton(coordinator),
-        NeatsvorDeleteCloudMapButton(coordinator),
         NeatsvorSaveCurrentMapButton(coordinator),
         NeatsvorUseSelectedMapButton(coordinator),
         NeatsvorRefreshCleanHistoryButton(coordinator),
+        # NeatsvorDeleteCloudMapButton — УДАЛЁН (заглушка без реального API удаления)
     ]
 
     async_add_entities(entities)
@@ -208,55 +208,6 @@ class NeatsvorDownloadMapButton(CoordinatorEntity, ButtonEntity):
                     "message": f"Error downloading map: {e}",
                     "title": "Neatsvor Cloud Maps"
                 })
-
-
-class NeatsvorDeleteCloudMapButton(CoordinatorEntity, ButtonEntity):
-    """Button to delete the selected cloud map."""
-    _attr_has_entity_name = True
-    _attr_translation_key = "delete_cloud_map"
-    _attr_icon = "mdi:delete"
-    
-    def __init__(self, coordinator):
-        """Initialize."""
-        super().__init__(coordinator)
-        device_id = coordinator.device_id
-        self._attr_unique_id = f"neatsvor_{device_id}_delete_cloud_map"
-        self._attr_device_info = coordinator.device_info
-
-    async def async_press(self) -> None:
-        """Press the button."""
-        if not hasattr(self.coordinator, 'cloud_maps_sensor'):
-            _LOGGER.error("No cloud_maps_sensor in coordinator")
-            return
-
-        selected_id = self.coordinator.cloud_maps_sensor.selected_map_id
-        if not selected_id:
-            _LOGGER.warning("No map selected to delete")
-            self.hass.bus.async_fire("persistent_notification", {
-                "message": "Please select a map first",
-                "title": "Neatsvor Cloud Maps"
-            })
-            return
-
-        _LOGGER.info("Deleting map %d", selected_id)
-
-        selected_map = self.coordinator.cloud_maps_sensor.get_map_by_id(selected_id)
-        map_name = selected_map['name'] if selected_map else f"ID {selected_id}"
-
-        self.hass.bus.async_fire("persistent_notification", {
-            "message": f"Delete map '{map_name}'? (stub implementation - would delete from cloud)",
-            "title": "Neatsvor Cloud Maps"
-        })
-
-        if hasattr(self.coordinator.cloud_maps_sensor, '_maps'):
-            self.coordinator.cloud_maps_sensor._maps = [
-                m for m in self.coordinator.cloud_maps_sensor._maps
-                if m['id'] != selected_id
-            ]
-            self.coordinator.cloud_maps_sensor.async_write_ha_state()
-
-            if hasattr(self.coordinator, 'cloud_map_select'):
-                await self.coordinator.cloud_map_select.async_update()
 
 
 class NeatsvorSaveCurrentMapButton(CoordinatorEntity, ButtonEntity):
