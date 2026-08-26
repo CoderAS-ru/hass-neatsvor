@@ -60,63 +60,8 @@ class MapDecoder:
         if not map_data.HasField('map_info'):
             raise ValueError("No map data in map_info")
 
-        # Decode raster data
-        map_array, rooms, walls = MapDecoder._decode_cells(
-            map_data.map_info.data,
-            map_data.width,
-            map_data.height
-        )
-
-        # Extract trajectory with filter (-1, -1)
-        trajectory_points = []
-        if map_data.HasField('trace_info'):
-            for trace_data in map_data.trace_info.data:
-                for point in trace_data.points:
-                    if point.x != -1 or point.y != -1:
-                        trajectory_points.append((point.x, point.y))
-
-        _LOGGER.debug("Trajectory: %s points (after filtering (-1,-1))", len(trajectory_points))
-
-        # Extract positions
-        robot_pos = None
-        charger_pos = None
-
-        if map_data.HasField('trace_info') and map_data.trace_info.HasField('robot_position'):
-            robot_pos = MapDecoder._extract_position(map_data.trace_info.robot_position)
-
-        if map_data.HasField('map_info') and map_data.map_info.HasField('charger_position'):
-            charger_pos = MapDecoder._extract_position(map_data.map_info.charger_position)
-
-        # Extract rooms
-        room_info = []
-        if map_data.HasField('room_info'):
-            for room_name in map_data.room_info.room_names:
-                room_info.append({
-                    'id': room_name.room_id,
-                    'name': room_name.name
-                })
-
-        # Extract origin
-        origin = {'x': 0, 'y': 0}
-        if map_data.HasField('map_info') and map_data.map_info.HasField('origin'):
-            origin['x'] = map_data.map_info.origin.x
-            origin['y'] = map_data.map_info.origin.y
-
-        return {
-            'width': map_data.width,
-            'height': map_data.height,
-            'resolution': map_data.resolution,
-            'map_array': map_array,
-            'rooms': rooms,
-            'walls': walls,
-            'trajectory': trajectory_points,
-            'robot_position': robot_pos,
-            'charger_position': charger_pos,
-            'room_names': room_info,
-            'origin': origin,
-            'map_process_type': map_data.map_process_type,
-            'raw': map_data
-        }
+        # Use shared conversion method
+        return MapDecoder._protobuf_to_dict(map_data)
 
     @staticmethod
     def decode_app_map(filepath: str) -> Dict[str, Any]:
@@ -140,64 +85,8 @@ class MapDecoder:
         if not map_data.HasField('map_info'):
             raise ValueError("No map data in map_info")
 
-        # Decode raster data
-        map_array, rooms, walls = MapDecoder._decode_cells(
-            map_data.map_info.data,
-            map_data.width,
-            map_data.height
-        )
-
-        # Extract trajectory with filter (-1, -1)
-        trajectory_points = []
-        if map_data.HasField('trace_info'):
-            for trace_data in map_data.trace_info.data:
-                for point in trace_data.points:
-                    # FILTER: skip points with coordinates (-1, -1)
-                    if point.x != -1 or point.y != -1:
-                        trajectory_points.append((point.x, point.y))
-
-        _LOGGER.debug("Trajectory: %s points (after filtering (-1,-1))", len(trajectory_points))
-
-        # Extract positions
-        robot_pos = None
-        charger_pos = None
-
-        if map_data.HasField('trace_info') and map_data.trace_info.HasField('robot_position'):
-            robot_pos = MapDecoder._extract_position(map_data.trace_info.robot_position)
-
-        if map_data.HasField('map_info') and map_data.map_info.HasField('charger_position'):
-            charger_pos = MapDecoder._extract_position(map_data.map_info.charger_position)
-
-        # Extract rooms
-        room_info = []
-        if map_data.HasField('room_info'):
-            for room_name in map_data.room_info.room_names:
-                room_info.append({
-                    'id': room_name.room_id,
-                    'name': room_name.name
-                })
-
-        # Extract origin
-        origin = {'x': 0, 'y': 0}
-        if map_data.HasField('map_info') and map_data.map_info.HasField('origin'):
-            origin['x'] = map_data.map_info.origin.x
-            origin['y'] = map_data.map_info.origin.y
-
-        return {
-            'width': map_data.width,
-            'height': map_data.height,
-            'resolution': map_data.resolution,
-            'map_array': map_array,  # numpy array with cell_value
-            'rooms': rooms,  # dictionary room_id -> list of cells
-            'walls': walls,  # list of walls
-            'trajectory': trajectory_points,  # filtered trajectory points
-            'robot_position': robot_pos,
-            'charger_position': charger_pos,
-            'room_names': room_info,
-            'origin': origin,
-            'map_process_type': map_data.map_process_type,
-            'raw': map_data  # raw protobuf data for working with trace_info.data
-        }
+        # Use shared conversion method
+        return MapDecoder._protobuf_to_dict(map_data)
 
     @staticmethod
     def decode_dev_map(filepath: str) -> Dict[str, str]:

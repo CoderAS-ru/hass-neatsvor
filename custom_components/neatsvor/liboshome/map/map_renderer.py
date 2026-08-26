@@ -325,7 +325,7 @@ class MapRenderer:
             text_x = (54 - (bbox[2] - bbox[0])) // 2
             text_y = (54 - (bbox[3] - bbox[1])) // 2
             draw.text((text_x, text_y), text, fill=(255, 255, 255), font=font_to_use)
-        except:
+        except Exception:
             # Fallback
             draw.text((20, 15), text, fill=(255, 255, 255))
 

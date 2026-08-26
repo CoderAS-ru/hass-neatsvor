@@ -703,8 +703,11 @@ class NeatsvorCloudMapsSensor(CoordinatorEntity, SensorEntity):
 
             _LOGGER.info("Received %s maps from API", len(maps))
 
-            self._maps = []
-            for i, m in enumerate(maps):
+            # Сохраняем старые пути для мёржа
+            old_maps = {m['id']: m for m in self._maps}
+
+            new_maps = []
+            for m in maps:
                 map_info = {
                     'id': m.device_map_id,
                     'map_id': m.map_id,
@@ -719,16 +722,30 @@ class NeatsvorCloudMapsSensor(CoordinatorEntity, SensorEntity):
                     'height': m.height,
                     'dev_map_url': m.dev_map_url,
                     'dev_map_md5': m.dev_map_md5,
-                    # 'json_path': str(self.coordinator.vacuum.cloud_maps._get_json_path(m)) if hasattr(self.coordinator.vacuum.cloud_maps, '_get_json_path') else None,
                     'json_path': None,
                 }
-                self._maps.append(map_info)
-                _LOGGER.debug("Map %s: ID=%s, name=%s, rooms=%s, png=%s", i + 1, m.device_map_id, m.name, m.room_count, m.png_url)
+                
+                # Мержим с существующими путями, если карта уже была загружена
+                if map_info['id'] in old_maps:
+                    old = old_maps[map_info['id']]
+                    if old.get('local_path') and not map_info.get('local_path'):
+                        map_info['local_path'] = old['local_path']
+                    if old.get('png_path') and not map_info.get('png_path'):
+                        map_info['png_path'] = old['png_path']
+                    if old.get('png_url') and not map_info.get('png_url'):
+                        map_info['png_url'] = old['png_url']
+                    if old.get('json_path') and not map_info.get('json_path'):
+                        map_info['json_path'] = old['json_path']
+                
+                new_maps.append(map_info)
+                _LOGGER.debug("Map %s: ID=%s, name=%s, rooms=%s, png=%s", 
+                             len(new_maps), m.device_map_id, m.name, m.room_count, map_info.get('png_path'))
 
+            self._maps = new_maps
             self._attr_native_value = str(len(self._maps))
             _LOGGER.info("Updated %s maps in sensor", len(self._maps))
 
-            # ✅ НОВОЕ: Предзагрузка PNG для первых 3 карт (как в истории)
+            # Предзагрузка PNG для первых 3 карт
             if self._maps:
                 preload_count = min(3, len(self._maps))
                 _LOGGER.info("Preloading PNGs for first %s cloud maps...", preload_count)
@@ -736,7 +753,7 @@ class NeatsvorCloudMapsSensor(CoordinatorEntity, SensorEntity):
                     map_id = self._maps[i]['id']
                     asyncio.create_task(self._preload_cloud_map_png(map_id))
                 
-                # Автовыбор последней карты (как в истории)
+                # Автовыбор последней карты
                 if not self.selected_map_id:
                     latest_map = self._maps[0]
                     _LOGGER.info("Auto-selecting latest cloud map: %s", latest_map['id'])

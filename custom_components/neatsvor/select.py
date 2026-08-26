@@ -576,7 +576,7 @@ class NeatsvorCloudMapSelect(CoordinatorEntity, SelectEntity):
             if m.get('date'):
                 try:
                     date_str = m['date'][:10]
-                except:
+                except Exception:
                     date_str = "N/A"
 
             rooms = m.get('room_count', 0)

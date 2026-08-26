@@ -47,6 +47,7 @@ class NeatsvorVacuum(CoordinatorEntity, StateVacuumEntity):
         device_id = coordinator.device_id
         self._attr_unique_id = f"neatsvor_{device_id}_vacuum"
         self._attr_device_info = coordinator.device_info
+        self._attr_state = None
 
         # Basic features
         self._attr_supported_features = (
@@ -82,8 +83,25 @@ class NeatsvorVacuum(CoordinatorEntity, StateVacuumEntity):
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from coordinator."""
         if self.coordinator and self.coordinator.data:
-            # Просто обновляем состояние, чтобы HA знал об изменениях
-            self.async_write_ha_state()
+            status_text = self.coordinator.data.get("status_text")
+            if status_text and status_text != "Unknown":
+                language = self.hass.config.language if self.hass else "en"
+                new_state = get_localized_status(status_text.lower(), language)
+                
+                # Если состояние изменилось — обновляем и сохраняем
+                if self._attr_state != new_state:
+                    self._attr_state = new_state
+                    _LOGGER.info("State changed: %s", new_state)
+                    # Принудительно генерируем событие изменения
+                    self.async_write_ha_state()
+            else:
+                if self._attr_state != "Неизвестно":
+                    self._attr_state = "Неизвестно"
+                    self.async_write_ha_state()
+        else:
+            if self._attr_state is not None:
+                self._attr_state = None
+                self.async_write_ha_state()
 
     def _get_localized_fan_speed(self, fan_speed: str) -> str:
         """Get localized fan speed display name."""
@@ -378,30 +396,6 @@ class NeatsvorVacuum(CoordinatorEntity, StateVacuumEntity):
         return attributes
         
     @property
-    def state(self) -> Optional[str]:
-        """Return vacuum state - directly from status sensor."""
-        if not self.coordinator or not self.coordinator.hass:
-            return None
-        
-        # Формируем entity_id сенсора статуса
-        device_id = self.coordinator.device_id
-        sensor_entity_id = f"sensor.neatsvor_{device_id}_status"
-        
-        # Получаем состояние из сенсора
-        sensor_state = self.coordinator.hass.states.get(sensor_entity_id)
-        
-        if sensor_state and sensor_state.state:
-            return sensor_state.state
-        
-        # Fallback: пробуем через данные координатора
-        status_text = self.coordinator.data.get("status_text") if self.coordinator.data else None
-        if status_text and status_text != "Unknown":
-            language = self.hass.config.language if self.hass else "en"
-            return get_localized_status(status_text.lower(), language)
-        
-        return "Неизвестно"
-
-    @property
     def activity(self) -> VacuumActivity | None:
         """Return vacuum activity for internal HA use."""
         if not self.coordinator or not self.coordinator.data:
@@ -410,7 +404,6 @@ class NeatsvorVacuum(CoordinatorEntity, StateVacuumEntity):
         status_text = self.coordinator.data.get("status_text", "").lower()
 
         activity_map = {
-            # Русские ключи
             "уборк": VacuumActivity.CLEANING,
             "возврат": VacuumActivity.RETURNING,
             "зарядк": VacuumActivity.DOCKED,
@@ -420,7 +413,6 @@ class NeatsvorVacuum(CoordinatorEntity, StateVacuumEntity):
             "сон": VacuumActivity.IDLE,
             "ожидание": VacuumActivity.IDLE,
             "перемещение": VacuumActivity.RETURNING,
-            # Английские ключи (для совместимости)
             "cleaning": VacuumActivity.CLEANING,
             "returning": VacuumActivity.RETURNING,
             "charging": VacuumActivity.DOCKED,

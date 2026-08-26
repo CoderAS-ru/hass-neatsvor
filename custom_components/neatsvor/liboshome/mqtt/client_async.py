@@ -76,9 +76,9 @@ class AsyncMQTTClient:
             try:
                 await asyncio.wait_for(self._listening_task, timeout=2.0)
             except (asyncio.CancelledError, asyncio.TimeoutError):
-                pass
-            except Exception:
-                pass
+                _LOGGER.debug("Listener task cancelled or timed out")
+            except Exception as e:
+                _LOGGER.debug("Error stopping listener: %s", e)
             finally:
                 self._listening_task = None
 
@@ -89,7 +89,7 @@ class AsyncMQTTClient:
                 await self._client.__aexit__(None, None, None)
             except RuntimeError as e:
                 if "Event loop is closed" not in str(e):
-                    _LOGGER.debug("Error closing MQTT client: %s", e)
+                    _LOGGER.debug("RuntimeError closing MQTT client: %s", e)
             except Exception as e:
                 _LOGGER.debug("Error closing MQTT client: %s", e)
             finally:

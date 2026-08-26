@@ -116,7 +116,7 @@ class CloudMapManager:
         if date_match:
             try:
                 return datetime.fromisoformat(date_match.group(1))
-            except:
+            except Exception:
                 pass
         return None
 
