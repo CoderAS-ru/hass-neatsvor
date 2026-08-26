@@ -350,8 +350,8 @@ class NeatsvorVacuum:
                 if self.mqtt:
                     try:
                         await self.mqtt.disconnect()
-                    except:
-                        pass
+                    except Exception as e:
+                        _LOGGER.debug("Error disconnecting MQTT during reconnect: %s", e)
                     self.mqtt = None
 
                 await self._connect_mqtt()

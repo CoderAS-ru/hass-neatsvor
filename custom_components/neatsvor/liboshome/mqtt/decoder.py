@@ -15,7 +15,7 @@ if proto_dir not in sys.path:
 try:
     from custom_components.neatsvor.liboshome.protobuf import sdk_com_pb2 as bvsdk
 except ImportError as e:
-    print(f"Error: Failed to import sdk_com_pb2 from {proto_dir}: {e}")
+    _LOGGER.error("Failed to import sdk_com_pb2 from %s: %s", proto_dir, e)
     raise
 
 _LOGGER = logging.getLogger(__name__)

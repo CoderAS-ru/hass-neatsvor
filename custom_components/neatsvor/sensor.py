@@ -28,6 +28,7 @@ from .const import (
     get_localized_clean_mode,
     MALFUNCTION_MAP_EN,
     MALFUNCTION_MAP_RU,
+    ROBOT_STATUS,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -332,17 +333,7 @@ class NeatsvorSensor(CoordinatorEntity, SensorEntity):
         language = self.hass.config.language if self.hass else "en"
         
         # Status mapping
-        status_map = {
-            0: "idle", 1: "relocation", 2: "upgrading", 3: "building_map",
-            4: "paused", 5: "returning", 6: "charging", 7: "charged",
-            8: "cleaning", 9: "zone_cleaning", 10: "room_cleaning",
-            11: "spot_cleaning", 12: "manual", 13: "error",
-            14: "sleeping", 15: "dust_collecting",
-            50: "washing_mop", 51: "filling_water", 52: "drying_mop",
-            53: "station_cleaning", 54: "returning_to_wash",
-        }
-        
-        status_key = status_map.get(status_code, "unknown")
+        status_key = ROBOT_STATUS.get(status_code, "unknown")
         
         # If not an error, return localized status
         if status_code != 13:
