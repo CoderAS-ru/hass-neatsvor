@@ -1305,23 +1305,20 @@ class NeatsvorCloudMapPresetSensor(CoordinatorEntity, SensorEntity):
                 self.async_write_ha_state()
                 return
 
-            selected_map = None
-            for m in sensor._maps:
-                if m['id'] == selected_id:
-                    selected_map = m
-                    break
+            # Получаем актуальный объект CloudMapInfo из менеджера
+            cloud_map_info = self.coordinator.vacuum.cloud_maps.get_map_by_id(selected_id)
 
-            if not selected_map:
+            if not cloud_map_info:
+                _LOGGER.debug("CloudMapInfo not found for map %s", selected_id)
                 return
 
             self._map_id = selected_id
-            self._map_name = selected_map.get('name')
+            self._map_name = cloud_map_info.name
 
+            # Берём пути из CloudMapInfo (актуальные)
             json_path = None
-            if selected_map.get('json_path'):
-                json_path = Path(selected_map['json_path'])
-            elif selected_map.get('local_path'):
-                bv_path = Path(selected_map['local_path'])
+            if cloud_map_info.downloaded_path:
+                bv_path = Path(cloud_map_info.downloaded_path)
                 json_path = bv_path.parent.parent / "json" / f"{bv_path.stem}.json"
 
             if json_path and json_path.exists():
@@ -1343,7 +1340,6 @@ class NeatsvorCloudMapPresetSensor(CoordinatorEntity, SensorEntity):
 
                         self._attr_native_value = f"{len(self._presets)} presets"
                         _LOGGER.debug("Cloud map '%s': %s presets", self._map_name, len(self._presets))
-
                 except Exception as e:
                     _LOGGER.error("Error loading cloud map presets: %s", e)
 
@@ -1454,30 +1450,29 @@ class NeatsvorPresetComparisonSensor(CoordinatorEntity, SensorEntity):
             selected_id = sensor.selected_map_id if hasattr(sensor, 'selected_map_id') else None
 
             if selected_id:
-                for m in sensor._maps:
-                    if m['id'] == selected_id:
-                        json_path = None
-                        if m.get('json_path'):
-                            json_path = Path(m['json_path'])
-                        elif m.get('local_path'):
-                            bv_path = Path(m['local_path'])
-                            json_path = bv_path.parent.parent / "json" / f"{bv_path.stem}.json"
+                # Получаем актуальный объект CloudMapInfo из менеджера
+                cloud_map_info = self.coordinator.vacuum.cloud_maps.get_map_by_id(selected_id)
 
-                        if json_path and json_path.exists():
-                            try:
-                                import json
-                                import aiofiles
-                                async with aiofiles.open(json_path, 'r', encoding='utf-8') as f:
-                                    content = await f.read()
-                                    metadata = json.loads(content)
-                                    self._cloud_rooms = metadata.get('rooms', [])
-                                    for room in self._cloud_rooms:
-                                        room_id = room['id']
-                                        preset = room.get('preset', {})
-                                        self._cloud_presets[room_id] = preset
-                            except Exception as e:
-                                _LOGGER.error("Error loading cloud presets for comparison: %s", e)
-                        break
+                if cloud_map_info:
+                    json_path = None
+                    if cloud_map_info.downloaded_path:
+                        bv_path = Path(cloud_map_info.downloaded_path)
+                        json_path = bv_path.parent.parent / "json" / f"{bv_path.stem}.json"
+
+                    if json_path and json_path.exists():
+                        try:
+                            import json
+                            import aiofiles
+                            async with aiofiles.open(json_path, 'r', encoding='utf-8') as f:
+                                content = await f.read()
+                                metadata = json.loads(content)
+                                self._cloud_rooms = metadata.get('rooms', [])
+                                for room in self._cloud_rooms:
+                                    room_id = room['id']
+                                    preset = room.get('preset', {})
+                                    self._cloud_presets[room_id] = preset
+                        except Exception as e:
+                            _LOGGER.error("Error loading cloud presets for comparison: %s", e)
 
         differences = []
 
