@@ -94,15 +94,24 @@ In version v2.1.0, the integration's architecture was completely redesigned to s
 
 **What this means for you:**
 
-1.  **After the update**, your old entities (e.g., `sensor.s700_status`) will become unavailable.
-2.  **Don't panic!** You just need to delete them so Home Assistant can switch to the new ones.
-3.  How to do it:
-    *   Go to **Settings → Devices & Services → Entities**.
-    *   Find all Neatsvor entities marked as "unavailable" (usually starting with `sensor.s700_*`, `select.s700_*`, etc.).
-    *   Delete them.
-4.  **Update your automations and cards**, replacing old `entity_id`s with new ones (`sensor.neatsvor_<device_id>_status`, etc.).
+1. **After the update**, your old entities (e.g., `sensor.s700_status`) **may become unavailable**.
 
-If you use multiple devices, each will have its own unique `<device_id>`, allowing the integration to distinguish them.
+2. **Important:** If you have **only one device**, the integration may keep the simplified format (`s700_*`) for backward compatibility. This is normal — you can continue using the old IDs.
+
+3. **When you need to switch to the new format:**
+   - You have multiple devices
+   - You are installing the integration from scratch
+   - You want to unify IDs for all entities
+
+4. **How to switch to the new format:**
+   - Remove the integration (Settings → Devices & Services → Neatsvor → Remove)
+   - Delete all old `s700_*` entities
+   - Restart Home Assistant
+   - Add the integration again
+
+5. **If you use multiple devices**, each will have its own unique `<device_id>`, allowing the integration to distinguish them.
+
+**Recommendation:** If you have one device and everything is working — you don't need to change anything. If you plan to add a second device, it's better to switch to the new format now.
 
 ## Usage
 
