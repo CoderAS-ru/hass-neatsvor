@@ -95,9 +95,9 @@ class NeatsvorVacuum(CoordinatorEntity, StateVacuumEntity):
                     # Принудительно генерируем событие изменения
                     self.async_write_ha_state()
             else:
-                if self._attr_state != "Неизвестно":
-                    self._attr_state = "Неизвестно"
-                    self.async_write_ha_state()
+                language = self.hass.config.language if self.hass else "en"
+                self._attr_state = get_localized_status("unknown", language)
+                self.async_write_ha_state()
         else:
             if self._attr_state is not None:
                 self._attr_state = None

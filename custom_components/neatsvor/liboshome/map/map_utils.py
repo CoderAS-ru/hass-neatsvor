@@ -48,11 +48,11 @@ def calculate_zone_coordinates(x1: int, y1: int, x2: int, y2: int,
     Returns:
         Tuple of (x1, y1, x2, y2) in robot coordinate system
     """
-    # Convert from app coordinates to robot coordinates
-    robot_x1 = (x1 - origin_x) // resolution
-    robot_y1 = (y1 - origin_y) // resolution
-    robot_x2 = (x2 - origin_x) // resolution
-    robot_y2 = (y2 - origin_y) // resolution
+    # Convert from app coordinates to robot coordinates with rounding
+    robot_x1 = int(round((x1 - origin_x) / resolution))
+    robot_y1 = int(round((y1 - origin_y) / resolution))
+    robot_x2 = int(round((x2 - origin_x) / resolution))
+    robot_y2 = int(round((y2 - origin_y) / resolution))
     
     return (robot_x1, robot_y1, robot_x2, robot_y2)
     

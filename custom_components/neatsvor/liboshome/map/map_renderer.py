@@ -55,40 +55,35 @@ class MapRenderer:
             else:
                 fonts_loaded.append(f"{font_name}: default")
 
-        _LOGGER.info("Fonts loaded: %s", ', '.join(fonts_loaded))
+        _LOGGER.debug("Fonts loaded: %s", ', '.join(fonts_loaded))
 
     def _load_font(self, size: int = 20) -> Optional[ImageFont]:
         """Load font from local fonts folder."""
         try:
             from pathlib import Path
 
-            # Determine path to fonts folder
-            current_dir = Path(__file__).parent  # liboshome/map/
-            liboshome_dir = current_dir.parent   # liboshome/
-            fonts_dir = liboshome_dir / 'fonts'  # liboshome/fonts/
-
-            # Path to Arial
+            current_dir = Path(__file__).parent
+            liboshome_dir = current_dir.parent
+            fonts_dir = liboshome_dir / 'fonts'
             font_path = fonts_dir / 'arial.ttf'
 
-            _LOGGER.info("Looking for font: %s (size %s)", font_path, size)
+            _LOGGER.debug("Looking for font: %s (size %s)", font_path, size)
 
             if font_path.exists():
                 try:
                     font = ImageFont.truetype(str(font_path), size)
-                    _LOGGER.info("Loaded font from local folder: %s (size %s)", font_path, size)
+                    _LOGGER.debug("Loaded font from local folder: %s (size %s)", font_path, size)
                     return font
                 except Exception as e:
                     _LOGGER.error("Failed to load font from %s: %s", font_path, e)
             else:
                 _LOGGER.error("Font file not found: %s", font_path)
 
-                # Try to find in other locations for debugging
-                _LOGGER.info("Searching for available fonts:")
+                _LOGGER.debug("Searching for available fonts:")
                 for p in [fonts_dir, Path("/usr/share/fonts/")]:
                     if p.exists():
-                        _LOGGER.info("  %s: %s", p, list(p.glob('*.ttf'))[:5])
+                        _LOGGER.debug("  %s: %s", p, list(p.glob('*.ttf'))[:5])
 
-            # Fallback to default font
             _LOGGER.warning("Using default PIL font (size %s)", size)
             return ImageFont.load_default()
 
@@ -156,7 +151,7 @@ class MapRenderer:
         # Save if needed
         if output_file:
             image.save(output_file)
-            _LOGGER.info("Map saved: %s", output_file)
+            _LOGGER.debug("Map saved: %s", output_file)
 
         return image
 
@@ -227,26 +222,24 @@ class MapRenderer:
         if self._robot_icon is not None and self._charger_icon is not None:
             return
 
-        # Paths to icons
         project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
         mqtt_dir = os.path.join(project_root, 'liboshome', 'map')
 
         robot_path = os.path.join(mqtt_dir, 'ic_robot.png')
         charger_path = os.path.join(mqtt_dir, 'ic_charger.png')
 
-        _LOGGER.info("Loading icons from %s", mqtt_dir)
+        _LOGGER.debug("Loading icons from %s", mqtt_dir)
 
-        # Load or create icons
         try:
             self._robot_icon = Image.open(robot_path).convert('RGBA')
-            _LOGGER.info("Robot icon loaded")
+            _LOGGER.debug("Robot icon loaded")
         except Exception as e:
             _LOGGER.warning("Error loading robot icon: %s", e)
             self._robot_icon = self._create_simple_icon((255, 0, 0, 200), "R")
 
         try:
             self._charger_icon = Image.open(charger_path).convert('RGBA')
-            _LOGGER.info("Charger icon loaded")
+            _LOGGER.debug("Charger icon loaded")
         except Exception as e:
             _LOGGER.warning("Error loading charger icon: %s", e)
             self._charger_icon = self._create_simple_icon((0, 255, 0, 200), "C")
@@ -345,7 +338,7 @@ class MapRenderer:
         if not room_names:
             return
 
-        _LOGGER.info("Adding legend for %s rooms (large font)", len(room_names))
+        _LOGGER.debug("Adding legend for %s rooms (large font)", len(room_names))
 
         # Legend parameters (ENLARGED FOR MAXIMUM READABILITY)
         item_height = 45              # Increased from 35 to 45

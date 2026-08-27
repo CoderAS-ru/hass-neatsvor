@@ -365,7 +365,10 @@ class NeatsvorCloudMapCamera(CoordinatorEntity, Camera):
         return self._get_loading_image()
 
     def _get_loading_image(self) -> bytes:
-        """Return a loading placeholder image."""
+        """Return a cached loading placeholder image."""
+        if hasattr(self, '_cached_loading_image'):
+            return self._cached_loading_image
+        
         try:
             import io
             from PIL import Image, ImageDraw
@@ -376,11 +379,14 @@ class NeatsvorCloudMapCamera(CoordinatorEntity, Camera):
             
             img_byte_arr = io.BytesIO()
             img.save(img_byte_arr, format='PNG')
-            return img_byte_arr.getvalue()
+            self._cached_loading_image = img_byte_arr.getvalue()
+            return self._cached_loading_image
+            
         except Exception:
-            # Если PIL недоступен, возвращаем минимальный PNG 1x1
-            return b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82'
-
+            # Если PIL недоступен, возвращаем минимальный PNG 1x1 (закешированный)
+            self._cached_loading_image = b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82'
+            return self._cached_loading_image
+        
     @property
     def available(self) -> bool:
         """Return if entity is available."""

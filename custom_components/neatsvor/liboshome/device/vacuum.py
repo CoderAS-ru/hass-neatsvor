@@ -510,9 +510,23 @@ class NeatsvorVacuum:
         dp_names = ['dust_collection', 'empty_dust', 'dust_collection_switch']
         for name in dp_names:
             if self.dp_manager.get_id(name):
-                return await self._send_dp_command(name, True)
+                result = await self._send_dp_command(name, True)
+                if result and hasattr(self, 'hass') and self.hass:
+                    self.hass.bus.async_fire("persistent_notification", {
+                        "message": "Dust bin empty command sent successfully",
+                        "title": "Neatsvor"
+                    })
+                return result
 
         _LOGGER.error("DP for dust collection not found")
+        
+        # Notify user about failure
+        if hasattr(self, 'hass') and self.hass:
+            self.hass.bus.async_fire("persistent_notification", {
+                "message": "Failed to send dust bin empty command: DP not found",
+                "title": "Neatsvor Error"
+            })
+        
         return False
 
     async def start_room_clean(self, room_ids: List[int]) -> bool:

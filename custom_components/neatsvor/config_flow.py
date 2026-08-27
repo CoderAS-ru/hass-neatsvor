@@ -177,10 +177,33 @@ class NeatsvorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 error_msg = str(err)
                 _LOGGER.error("Connection error: %s", err)
                 
-                # Проверяем конкретные ошибки
-                if "90104" in error_msg or "Login failed" in error_msg:
+                # Объединяем проверки для надёжности
+                error_lower = error_msg.lower()
+                
+                # Признаки того, что аккаунт уже используется в другом месте
+                account_in_use_indicators = [
+                    "90104",
+                    "login failed",
+                    "account already connected",
+                    "device already bound",
+                    "session conflict",
+                    "already logged in"
+                ]
+                
+                # Признаки сетевых проблем
+                network_error_indicators = [
+                    "dns",
+                    "timeout",
+                    "getaddrinfo",
+                    "connection refused",
+                    "network unreachable",
+                    "host unreachable",
+                    "no route to host"
+                ]
+                
+                if any(indicator in error_lower for indicator in account_in_use_indicators):
                     errors["base"] = "account_in_use"
-                elif "DNS" in error_msg or "Timeout" in error_msg or "getaddrinfo" in error_msg:
+                elif any(indicator in error_lower for indicator in network_error_indicators):
                     errors["base"] = "cannot_connect"
                 else:
                     errors["base"] = "invalid_auth"

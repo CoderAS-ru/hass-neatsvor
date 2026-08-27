@@ -34,26 +34,39 @@ async def async_setup_entry(
 
 
 async def _async_setup_selects_later(coordinator, async_add_entities):
-    """Create selects after DP Manager initialization."""
+    """Create selects after DP Manager initialization with retry."""
     _LOGGER.debug("SELECT: Starting select creation")
     
-    for i in range(30):
+    max_attempts = 3
+    retry_delay = 5
+    
+    for attempt in range(max_attempts):
+        # Проверяем готовность вакуума
         if coordinator.vacuum and coordinator.vacuum.is_initialized:
-            _LOGGER.debug("Vacuum ready after %s seconds", i + 1)
+            _LOGGER.debug("Vacuum ready after %s attempts", attempt + 1)
             break
-        await asyncio.sleep(1)
-    else:
-        _LOGGER.error("Vacuum not initialized after 30 seconds")
-        return
-
-    for i in range(30):
+        else:
+            if attempt < max_attempts - 1:
+                _LOGGER.warning("Vacuum not ready, retry %s/%s in %ss", attempt + 1, max_attempts, retry_delay)
+                await asyncio.sleep(retry_delay)
+                retry_delay *= 2  # 5, 10, 20
+            else:
+                _LOGGER.error("Vacuum not initialized after %s attempts", max_attempts)
+                return
+    
+    retry_delay = 5
+    for attempt in range(max_attempts):
         if coordinator.vacuum.dp_manager and len(coordinator.vacuum.dp_manager) > 0:
-            _LOGGER.debug("DP Manager ready after %s seconds", i + 1)
+            _LOGGER.debug("DP Manager ready after %s attempts", attempt + 1)
             break
-        await asyncio.sleep(1)
-    else:
-        _LOGGER.error("DP Manager not initialized")
-        return
+        else:
+            if attempt < max_attempts - 1:
+                _LOGGER.warning("DP Manager not ready, retry %s/%s in %ss", attempt + 1, max_attempts, retry_delay)
+                await asyncio.sleep(retry_delay)
+                retry_delay *= 2
+            else:
+                _LOGGER.error("DP Manager not initialized after %s attempts", max_attempts)
+                return
 
     dp_manager = coordinator.vacuum.dp_manager
     all_codes = dp_manager.get_all_codes()
