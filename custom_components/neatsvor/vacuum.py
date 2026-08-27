@@ -87,17 +87,16 @@ class NeatsvorVacuum(CoordinatorEntity, StateVacuumEntity):
             if status_text and status_text != "Unknown":
                 language = self.hass.config.language if self.hass else "en"
                 new_state = get_localized_status(status_text.lower(), language)
-                
-                # Если состояние изменилось — обновляем и сохраняем
                 if self._attr_state != new_state:
                     self._attr_state = new_state
-                    _LOGGER.info("State changed: %s", new_state)
-                    # Принудительно генерируем событие изменения
                     self.async_write_ha_state()
+                    _LOGGER.info("State updated: %s", new_state)
             else:
                 language = self.hass.config.language if self.hass else "en"
-                self._attr_state = get_localized_status("unknown", language)
-                self.async_write_ha_state()
+                new_state = get_localized_status("unknown", language)
+                if self._attr_state != new_state:
+                    self._attr_state = new_state
+                    self.async_write_ha_state()
         else:
             if self._attr_state is not None:
                 self._attr_state = None
@@ -404,6 +403,7 @@ class NeatsvorVacuum(CoordinatorEntity, StateVacuumEntity):
         status_text = self.coordinator.data.get("status_text", "").lower()
 
         activity_map = {
+            # Русские ключи
             "уборк": VacuumActivity.CLEANING,
             "возврат": VacuumActivity.RETURNING,
             "зарядк": VacuumActivity.DOCKED,
@@ -413,13 +413,27 @@ class NeatsvorVacuum(CoordinatorEntity, StateVacuumEntity):
             "сон": VacuumActivity.IDLE,
             "ожидание": VacuumActivity.IDLE,
             "перемещение": VacuumActivity.RETURNING,
+
+            # Английские ключи (из DP-схемы)
             "cleaning": VacuumActivity.CLEANING,
+            "normal_clean": VacuumActivity.CLEANING,
+            "room_clean": VacuumActivity.CLEANING,
+            "zone_clean": VacuumActivity.CLEANING,
             "returning": VacuumActivity.RETURNING,
+            "recharge": VacuumActivity.DOCKED,
             "charging": VacuumActivity.DOCKED,
+            "charge_finished": VacuumActivity.DOCKED,
             "docked": VacuumActivity.DOCKED,
             "paused": VacuumActivity.PAUSED,
+            "pause": VacuumActivity.PAUSED,
             "error": VacuumActivity.ERROR,
+            "malfunction": VacuumActivity.ERROR,
             "idle": VacuumActivity.IDLE,
+            "sleep": VacuumActivity.IDLE,
+            "sleeping": VacuumActivity.IDLE,
+            "relocation": VacuumActivity.RETURNING,
+            "manual_control": VacuumActivity.PAUSED,
+            "dust_collecting": VacuumActivity.CLEANING,
         }
 
         for key, value in activity_map.items():
@@ -427,7 +441,7 @@ class NeatsvorVacuum(CoordinatorEntity, StateVacuumEntity):
                 return value
 
         return VacuumActivity.IDLE
-
+    
     @property
     def fan_speed(self) -> Optional[str]:
         """Return current fan speed (internal code, not localized)."""
