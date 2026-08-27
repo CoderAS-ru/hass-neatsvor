@@ -161,9 +161,8 @@ After this, you can use voice commands in the "Smart Home with Alice" app:
 |---------|-------------|
 | `neatsvor.vacuum_clean_zone` |	Start zone cleaning |
 | `neatsvor.clean_room_with_preset` |	Start room cleaning using saved presets |
-| `neatsvor.set_reference_map` |	Save the current map as a reference |
+| `neatsvor.set_reference_map` |	Set the current map as a reference |
 | `neatsvor.restore_reference_map` |	Restore room configuration from the reference map |
-| `neatsvor.save_map_to_cloud` |	Save the current map to the cloud |
 | `neatsvor.request_all_data` |	Request all data (like the official app) |
 | `neatsvor.build_map` |	Perform a fast map build without cleaning |
 | `neatsvor.empty_dust` |	Force empty the dust container |
