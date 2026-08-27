@@ -17,7 +17,7 @@
                         "zones": "[[selection]]"
                     }
                 }
-            },
+            }
         }
     },
     "tiles": {
@@ -25,13 +25,13 @@
             {
                 "tile_id": "main_brush_left",
                 "icon": "mdi:brush",
-                "unique_id_regex": "main_brush_",
+                "unique_id_regex": "main_brush",
                 "label": "tile.main_brush_left.label",
                 "unit": "unit.percent_shortcut"
             },
             {
                 "tile_id": "side_brush_left",
-                "unique_id_regex": "side_brush_",
+                "unique_id_regex": "side_brush",
                 "icon": "mdi:brush",
                 "label": "tile.side_brush_left.label",
                 "unit": "unit.percent_shortcut"
@@ -39,20 +39,20 @@
             {
                 "tile_id": "filter_left",
                 "icon": "mdi:air-filter",
-                "unique_id_regex": "hepa_filter_",
+                "unique_id_regex": "filter",
                 "label": "tile.filter_left.label",
                 "unit": "unit.percent_shortcut"
             },
             {
                 "tile_id": "cleaning_count",
                 "icon": "mdi:counter",
-                "unique_id_regex": "total_cleanings_",
+                "unique_id_regex": "total_cleanings",
                 "label": "tile.cleaning_count.label"
             },
             {
                 "tile_id": "cleaned_area",
                 "icon": "mdi:texture-box",
-                "unique_id_regex": "cleaning_area_",
+                "unique_id_regex": "total_clean_area",
                 "label": "tile.cleaned_area.label",
                 "unit": "unit.meter_squared_shortcut",
                 "precision": 2
@@ -60,7 +60,7 @@
             {
                 "tile_id": "cleaning_time",
                 "icon": "mdi:history",
-                "unique_id_regex": "cleaning_time_",
+                "unique_id_regex": "total_clean_time",
                 "label": "tile.cleaning_time.label",
                 "unit": "unit.minute_shortcut"
             }
@@ -71,7 +71,7 @@
             "type": "menu",
             "menu_id": "fan_speed",
             "icon_id": "fan_speed",
-            "unique_id_regex": "fan_speed_",
+            "unique_id_regex": "fan_speed",
             "available_values_attribute": "options",
             "icon": "mdi:fan",
             "icon_mapping": {
@@ -93,7 +93,7 @@
             "type": "menu",
             "menu_id": "water_box_mode",
             "icon_id": "water_level",
-            "unique_id_regex": "water_level_",
+            "unique_id_regex": "water_level",
             "available_values_attribute": "options",
             "icon": "mdi:water",
             "icon_mapping": {
@@ -114,7 +114,7 @@
             "type": "menu",
             "menu_id": "clean_mode",
             "icon_id": "clean_mode",
-            "unique_id_regex": "clean_mode_",
+            "unique_id_regex": "clean_mode",
             "available_values_attribute": "options",
             "icon": "mdi:vacuum",
             "icon_mapping": {
