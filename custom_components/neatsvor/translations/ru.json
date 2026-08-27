@@ -144,7 +144,10 @@
       },
       "malfunction": {
         "name": "Неисправность"
-      }
+      },
+	  "maintenance": {
+	    "name": "Обслуживание"
+	  }
     },
     "binary_sensor": {
       "online": {

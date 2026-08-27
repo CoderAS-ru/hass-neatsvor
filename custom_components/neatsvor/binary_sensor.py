@@ -28,7 +28,6 @@ async def async_setup_entry(
         NeatsvorOnlineSensor(coordinator),
         NeatsvorChargingSensor(coordinator),
         NeatsvorDustBinFullSensor(coordinator),
-        # NeatsvorMopAttachedSensor(coordinator) — УДАЛЁН, нет соответствующего DP
     ]
 
     async_add_entities(entities)
@@ -78,14 +77,20 @@ class NeatsvorChargingSensor(CoordinatorEntity, BinarySensorEntity):
         if not self.coordinator or not self.coordinator.data:
             return False
 
+        # Используем status_code для определения зарядки
+        # 6 = charging, 7 = charge_finished
+        status_code = self.coordinator.data.get("status_code")
+        if status_code is not None:
+            return status_code in (6, 7)
+
+        # Fallback: проверяем status_text на всякий случай
         status_text = self.coordinator.data.get("status_text")
-        if not status_text:
-            return False
+        if status_text:
+            status_text = status_text.lower()
+            charging_states = ["charging", "charge_finished", "docked"]
+            return any(state in status_text for state in charging_states)
 
-        status_text = status_text.lower()
-        charging_states = ["charging", "charge_finished", "docked"]
-
-        return any(state in status_text for state in charging_states)
+        return False
 
     @property
     def available(self) -> bool:

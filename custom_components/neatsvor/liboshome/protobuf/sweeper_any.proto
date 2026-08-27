@@ -65,7 +65,6 @@ message CustomVoice {
     string md5_value = 4;
 }
 
-// ВАЖНО: Вот отсутствующее сообщение Rooms!
 message Rooms {
     repeated int32 room_ids = 1;
     int32 fan_level = 2;

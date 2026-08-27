@@ -144,7 +144,10 @@
       },
       "malfunction": {
         "name": "Malfunction"
-      }
+      },
+	  "maintenance": {
+		"name": "Maintenance"
+	  }
     },
     "binary_sensor": {
       "online": {

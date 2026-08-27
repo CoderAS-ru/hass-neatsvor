@@ -7,6 +7,8 @@ from typing import Iterator, Tuple, Any, Optional
 import os
 import sys
 
+_LOGGER = logging.getLogger(__name__)
+
 # Настраиваем путь для импорта protobuf
 proto_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'protobuf')
 if proto_dir not in sys.path:
@@ -17,9 +19,6 @@ try:
 except ImportError as e:
     _LOGGER.error("Failed to import sdk_com_pb2 from %s: %s", proto_dir, e)
     raise
-
-_LOGGER = logging.getLogger(__name__)
-
 
 def decode_dp_payload(payload: bytes) -> Iterator[Tuple[int, Any]]:
     """Decode DP payload and yield (dp_id, value) pairs."""

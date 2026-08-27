@@ -2295,8 +2295,7 @@ class NeatsvorMaintenanceSensor(CoordinatorEntity, SensorEntity):
     def __init__(self, coordinator):
         """Initialize."""
         super().__init__(coordinator)
-        # Этот сенсор уже использует правильный формат с device_id
-        self._attr_unique_id = f"{coordinator.device_id}_maintenance"
+        self._attr_unique_id = f"neatsvor_{coordinator.device_id}_maintenance"
         self._attr_device_info = coordinator.device_info
         self._attr_icon = "mdi:robot-vacuum"
         self._attr_native_value = "OK"
