@@ -181,7 +181,6 @@ yandex_smart_home:
 | `neatsvor.clean_room_with_preset` | Уборка комнаты с использованием предварительных настроек |
 | `neatsvor.set_reference_map` | Установить текущую карту как эталон |
 | `neatsvor.restore_reference_map` | Восстановить карту из эталона |
-| `neatsvor.save_map_to_cloud` | Сохранить карту в облако |
 | `neatsvor.request_all_data` | Запросить все данные (как официальное приложение) |
 | `neatsvor.build_map` | Быстрое построение карты без уборки |
 | `neatsvor.empty_dust` | Принудительная очистка контейнера пыли |
