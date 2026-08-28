@@ -37,6 +37,10 @@ class NeatsvorSelectStorage:
             _LOGGER.error("Error loading select states: %s", e)
             self.data = {}
 
+    async def async_save(self) -> None:
+        """Public method to save current data to storage."""
+        await self._async_save()
+
     async def _async_save(self) -> None:
         """Save states to storage."""
         try:
@@ -45,6 +49,20 @@ class NeatsvorSelectStorage:
         except Exception as e:
             _LOGGER.error("Error saving select states: %s", e)
 
+    async def async_save_current_states(self, select_entities: dict) -> None:
+        """Save current states of select entities."""
+        await self.async_ensure_loaded()
+        
+        changed = False
+        for entity_id, value in select_entities.items():
+            if self.data.get(entity_id) != value:
+                self.data[entity_id] = value
+                changed = True
+        
+        if changed:
+            await self._async_save()
+            _LOGGER.debug("Saved current select states: %s", select_entities)
+            
     async def async_ensure_loaded(self) -> None:
         """Ensure data is loaded."""
         if not self._loaded:

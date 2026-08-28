@@ -501,6 +501,323 @@ async def _async_register_services(hass: HomeAssistant):
             await coordinator.async_request_refresh()
             _LOGGER.info("Zone clean commands sent")
 
+    async def async_restore_reference_map(call: ServiceCall) -> None:
+        """Restore room configuration from the reference map."""
+        entity_ids = _normalize_entity_ids(call.data.get("entity_id"))
+        _LOGGER.info("Service call: restore_reference_map for %s", entity_ids)
+
+        coordinators = []
+        if entity_ids:
+            coordinators = await _get_coordinator_by_entity_ids(hass, entity_ids)
+        
+        if not coordinators:
+            for entry_id, entry_data in hass.data[DOMAIN].items():
+                if entry_id in ['services_registered', 'stop_handler_registered', 'service_names', '_entity_id_cache']:
+                    continue
+                coordinator = entry_data.get('coordinator')
+                if coordinator and hasattr(coordinator, 'cloud_maps_sensor'):
+                    coordinators.append(coordinator)
+                    break
+        
+        if not coordinators:
+            _LOGGER.error("No cloud_maps_sensor found")
+            return
+            
+        for coordinator in coordinators:
+            if not hasattr(coordinator, 'cloud_maps_sensor'):
+                continue
+                
+            sensor = coordinator.cloud_maps_sensor
+            reference_id = getattr(sensor, '_reference_map_id', None)
+
+            if not reference_id:
+                _LOGGER.warning("No reference map set")
+                hass.bus.async_fire("persistent_notification", {
+                    "message": "No reference map has been set. Please set a reference map first.",
+                    "title": "Neatsvor Cloud Maps"
+                })
+                return
+
+            reference_map = sensor.get_map_by_id(reference_id)
+            if not reference_map:
+                _LOGGER.error("Reference map %s not found", reference_id)
+                return
+
+            _LOGGER.info("Restoring from reference map: %s", reference_map.get('name'))
+            
+            if hasattr(coordinator, 'vacuum') and coordinator.vacuum:
+                try:
+                    await coordinator.vacuum.restore_reference_map(
+                        reference_id,
+                        reference_map.get('dev_map_url', ''),
+                        reference_map.get('dev_map_md5', '')
+                    )
+                    _LOGGER.info("Reference map restore command sent")
+                except Exception as e:
+                    _LOGGER.error("Error restoring reference map: %s", e)
+
+    async def async_compare_with_reference(call: ServiceCall) -> None:
+        """Compare the current map with the reference map."""
+        entity_ids = _normalize_entity_ids(call.data.get("entity_id"))
+        _LOGGER.info("Service call: compare_with_reference for %s", entity_ids)
+
+        coordinators = []
+        if entity_ids:
+            coordinators = await _get_coordinator_by_entity_ids(hass, entity_ids)
+        
+        if not coordinators:
+            for entry_id, entry_data in hass.data[DOMAIN].items():
+                if entry_id in ['services_registered', 'stop_handler_registered', 'service_names', '_entity_id_cache']:
+                    continue
+                coordinator = entry_data.get('coordinator')
+                if coordinator and hasattr(coordinator, 'cloud_maps_sensor'):
+                    coordinators.append(coordinator)
+                    break
+        
+        if not coordinators:
+            _LOGGER.error("No cloud_maps_sensor found")
+            return
+            
+        for coordinator in coordinators:
+            if not hasattr(coordinator, 'cloud_maps_sensor'):
+                continue
+                
+            sensor = coordinator.cloud_maps_sensor
+            reference_id = getattr(sensor, '_reference_map_id', None)
+            selected_id = sensor.selected_map_id
+
+            if not reference_id:
+                hass.bus.async_fire("persistent_notification", {
+                    "message": "No reference map has been set.",
+                    "title": "Neatsvor Cloud Maps"
+                })
+                return
+
+            if not selected_id:
+                hass.bus.async_fire("persistent_notification", {
+                    "message": "Please select a map to compare.",
+                    "title": "Neatsvor Cloud Maps"
+                })
+                return
+
+            reference_map = sensor.get_map_by_id(reference_id)
+            selected_map = sensor.get_map_by_id(selected_id)
+
+            if not reference_map or not selected_map:
+                _LOGGER.error("Maps not found")
+                return
+
+            # Формируем результат сравнения
+            diff = []
+            if reference_map.get('room_count') != selected_map.get('room_count'):
+                diff.append(f"Rooms: {reference_map.get('room_count')} vs {selected_map.get('room_count')}")
+            if abs(reference_map.get('area', 0) - selected_map.get('area', 0)) > 1:
+                diff.append(f"Area: {reference_map.get('area')}m² vs {selected_map.get('area')}m²")
+
+            msg = f"Comparing '{selected_map.get('name')}' with reference '{reference_map.get('name')}'\n"
+            if diff:
+                msg += "Differences found:\n" + "\n".join(diff)
+            else:
+                msg += "Maps are identical!"
+
+            hass.bus.async_fire("persistent_notification", {
+                "message": msg,
+                "title": "Neatsvor Cloud Maps"
+            })
+
+    async def async_force_update_maps(call: ServiceCall) -> None:
+        """Force update all map-related sensors."""
+        entity_ids = _normalize_entity_ids(call.data.get("entity_id"))
+        _LOGGER.info("Service call: force_update_maps for %s", entity_ids)
+
+        coordinators = []
+        if entity_ids:
+            coordinators = await _get_coordinator_by_entity_ids(hass, entity_ids)
+        
+        if not coordinators:
+            for entry_id, entry_data in hass.data[DOMAIN].items():
+                if entry_id in ['services_registered', 'stop_handler_registered', 'service_names', '_entity_id_cache']:
+                    continue
+                coordinator = entry_data.get('coordinator')
+                if coordinator:
+                    coordinators.append(coordinator)
+        
+        for coordinator in coordinators:
+            if coordinator:
+                if hasattr(coordinator, 'cloud_maps_sensor'):
+                    await coordinator.cloud_maps_sensor.async_force_update()
+                if hasattr(coordinator, 'cloud_map_presets'):
+                    await coordinator.cloud_map_presets.async_update()
+                if hasattr(coordinator, 'preset_comparison'):
+                    await coordinator.preset_comparison.async_update()
+                if hasattr(coordinator, 'room_list'):
+                    await coordinator.room_list.async_update()
+
+    async def async_cleanup_maps(call: ServiceCall) -> None:
+        """Manually clean up old maps and metadata."""
+        keep_last = call.data.get("keep_last", 10)
+        entity_ids = _normalize_entity_ids(call.data.get("entity_id"))
+        _LOGGER.info("Service call: cleanup_maps (keep_last=%s) for %s", keep_last, entity_ids)
+
+        coordinators = []
+        if entity_ids:
+            coordinators = await _get_coordinator_by_entity_ids(hass, entity_ids)
+        
+        if not coordinators:
+            for entry_id, entry_data in hass.data[DOMAIN].items():
+                if entry_id in ['services_registered', 'stop_handler_registered', 'service_names', '_entity_id_cache']:
+                    continue
+                coordinator = entry_data.get('coordinator')
+                if coordinator and hasattr(coordinator, 'vacuum') and coordinator.vacuum:
+                    coordinators.append(coordinator)
+        
+        for coordinator in coordinators:
+            if coordinator and hasattr(coordinator, 'vacuum') and coordinator.vacuum:
+                if hasattr(coordinator.vacuum, 'visualizer'):
+                    await coordinator.vacuum.visualizer.cleanup_realtime_maps(keep_last)
+                    hass.bus.async_fire("persistent_notification", {
+                        "message": f"Cleanup completed. Kept the last {keep_last} maps.",
+                        "title": "Neatsvor Map Cleanup"
+                    })
+
+    async def async_force_load_history(call: ServiceCall) -> None:
+        """Force load all history maps."""
+        entity_ids = _normalize_entity_ids(call.data.get("entity_id"))
+        _LOGGER.info("Service call: force_load_history for %s", entity_ids)
+
+        coordinators = []
+        if entity_ids:
+            coordinators = await _get_coordinator_by_entity_ids(hass, entity_ids)
+        
+        if not coordinators:
+            for entry_id, entry_data in hass.data[DOMAIN].items():
+                if entry_id in ['services_registered', 'stop_handler_registered', 'service_names', '_entity_id_cache']:
+                    continue
+                coordinator = entry_data.get('coordinator')
+                if coordinator and hasattr(coordinator, 'vacuum') and coordinator.vacuum:
+                    coordinators.append(coordinator)
+        
+        for coordinator in coordinators:
+            if coordinator and hasattr(coordinator, 'vacuum') and coordinator.vacuum:
+                if hasattr(coordinator.vacuum, 'clean_history'):
+                    records = await coordinator.vacuum.clean_history.get_clean_history(
+                        coordinator.vacuum.info.device_id, 10
+                    )
+                    _LOGGER.info("Found %s records", len(records))
+                    for record in records:
+                        await coordinator.vacuum.clean_history.load_clean_record_map(record)
+                    hass.bus.async_fire("persistent_notification", {
+                        "message": f"Loaded {len(records)} history maps",
+                        "title": "Neatsvor Clean History"
+                    })
+
+    async def async_cleanup_history_maps(call: ServiceCall) -> None:
+        """Clean up old history maps."""
+        keep_last = call.data.get("keep_last", 50)
+        entity_ids = _normalize_entity_ids(call.data.get("entity_id"))
+        _LOGGER.info("Service call: cleanup_history_maps (keep_last=%s) for %s", keep_last, entity_ids)
+
+        coordinators = []
+        if entity_ids:
+            coordinators = await _get_coordinator_by_entity_ids(hass, entity_ids)
+        
+        if not coordinators:
+            for entry_id, entry_data in hass.data[DOMAIN].items():
+                if entry_id in ['services_registered', 'stop_handler_registered', 'service_names', '_entity_id_cache']:
+                    continue
+                coordinator = entry_data.get('coordinator')
+                if coordinator and hasattr(coordinator, 'clean_history_sensor'):
+                    coordinators.append(coordinator)
+        
+        for coordinator in coordinators:
+            if coordinator and hasattr(coordinator, 'clean_history_sensor'):
+                await coordinator.clean_history_sensor.async_cleanup_old_maps()
+                hass.bus.async_fire("persistent_notification", {
+                    "message": "Cleaned up old history maps",
+                    "title": "Neatsvor Clean History"
+                })
+
+    async def async_cleanup_all_except_current(call: ServiceCall) -> None:
+        """Clean up all history maps except the current one."""
+        entity_ids = _normalize_entity_ids(call.data.get("entity_id"))
+        _LOGGER.info("Service call: cleanup_all_except_current for %s", entity_ids)
+
+        coordinators = []
+        if entity_ids:
+            coordinators = await _get_coordinator_by_entity_ids(hass, entity_ids)
+        
+        if not coordinators:
+            for entry_id, entry_data in hass.data[DOMAIN].items():
+                if entry_id in ['services_registered', 'stop_handler_registered', 'service_names', '_entity_id_cache']:
+                    continue
+                coordinator = entry_data.get('coordinator')
+                if coordinator and hasattr(coordinator, 'clean_history_sensor'):
+                    coordinators.append(coordinator)
+        
+        for coordinator in coordinators:
+            if coordinator and hasattr(coordinator, 'clean_history_sensor'):
+                await coordinator.clean_history_sensor.async_cleanup_all_except_current()
+                hass.bus.async_fire("persistent_notification", {
+                    "message": "Cleaned up all maps except current",
+                    "title": "Neatsvor Clean History"
+                })
+
+    async def async_save_select_states(call: ServiceCall) -> None:
+        """Save current select states to persistent storage."""
+        entity_ids = _normalize_entity_ids(call.data.get("entity_id"))
+        _LOGGER.info("Service call: save_select_states for %s", entity_ids)
+        
+        coordinators = []
+        if entity_ids:
+            coordinators = await _get_coordinator_by_entity_ids(hass, entity_ids)
+        else:
+            for entry_id, entry_data in hass.data[DOMAIN].items():
+                if entry_id in ['services_registered', 'stop_handler_registered', 'service_names', '_entity_id_cache']:
+                    continue
+                coordinator = entry_data.get('coordinator')
+                if coordinator:
+                    coordinators.append(coordinator)
+        
+        saved_count = 0
+        for coordinator in coordinators:
+            if coordinator and hasattr(coordinator, 'select_storage'):
+                try:
+                    await coordinator.select_storage.async_save()
+                    saved_count += 1
+                    _LOGGER.debug("Saved select states for coordinator")
+                except Exception as e:
+                    _LOGGER.error("Error saving select states: %s", e)
+        
+        _LOGGER.info("Saved select states for %d coordinator(s)", saved_count)
+
+    async def async_restore_select_states(call: ServiceCall) -> None:
+        """Restore select states from persistent storage."""
+        entity_ids = _normalize_entity_ids(call.data.get("entity_id"))
+        _LOGGER.info("Service call: restore_select_states for %s", entity_ids)
+        
+        coordinators = []
+        if entity_ids:
+            coordinators = await _get_coordinator_by_entity_ids(hass, entity_ids)
+        else:
+            for entry_id, entry_data in hass.data[DOMAIN].items():
+                if entry_id in ['services_registered', 'stop_handler_registered', 'service_names', '_entity_id_cache']:
+                    continue
+                coordinator = entry_data.get('coordinator')
+                if coordinator:
+                    coordinators.append(coordinator)
+        
+        restored_count = 0
+        for coordinator in coordinators:
+            if coordinator and hasattr(coordinator, 'select_storage'):
+                try:
+                    await coordinator.select_storage.async_ensure_loaded()
+                    restored_count += 1
+                    _LOGGER.debug("Restored select states for coordinator")
+                except Exception as e:
+                    _LOGGER.error("Error restoring select states: %s", e)
+        
+        _LOGGER.info("Restored select states for %d coordinator(s)", restored_count)
+
     # Register services
     hass.services.async_register(DOMAIN, "request_all_data", async_request_all_data)
     hass.services.async_register(DOMAIN, "request_map", async_request_map)
@@ -511,7 +828,16 @@ async def _async_register_services(hass: HomeAssistant):
     hass.services.async_register(DOMAIN, "use_cloud_map", async_use_cloud_map)
     hass.services.async_register(DOMAIN, "use_selected_cloud_map", async_use_selected_cloud_map)
     hass.services.async_register(DOMAIN, "vacuum_clean_zone", async_vacuum_zone_clean)
-
+    hass.services.async_register(DOMAIN, "restore_reference_map", async_restore_reference_map)
+    hass.services.async_register(DOMAIN, "compare_with_reference", async_compare_with_reference)
+    hass.services.async_register(DOMAIN, "force_update_maps", async_force_update_maps)
+    hass.services.async_register(DOMAIN, "cleanup_maps", async_cleanup_maps)
+    hass.services.async_register(DOMAIN, "save_select_states", async_save_select_states)
+    hass.services.async_register(DOMAIN, "restore_select_states", async_restore_select_states)
+    hass.services.async_register(DOMAIN, "force_load_history", async_force_load_history)
+    hass.services.async_register(DOMAIN, "cleanup_history_maps", async_cleanup_history_maps)
+    hass.services.async_register(DOMAIN, "cleanup_all_except_current", async_cleanup_all_except_current)
+    
     _LOGGER.info("All services registered")
 
 

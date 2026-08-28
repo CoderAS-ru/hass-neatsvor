@@ -366,7 +366,7 @@ class DPManager:
         code = command_to_code.get(command_name)
         if code:
             dp_id = self.get_id(code)
-            if dp_id:
+            if dp_id is not None:
                 self._command_cache[command_name] = dp_id
                 return dp_id
 

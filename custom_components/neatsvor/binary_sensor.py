@@ -116,8 +116,8 @@ class NeatsvorDustBinFullSensor(CoordinatorEntity, BinarySensorEntity):
         if not self.coordinator or not self.coordinator.data:
             return False
 
-        status_code = self.coordinator.data.get("status_code")
-        return status_code == 18  # dust_box_full
+        malfunction_code = self.coordinator.data.get("malfunction_code")
+        return malfunction_code == 18  # dust_box_full
 
     @property
     def available(self) -> bool:
