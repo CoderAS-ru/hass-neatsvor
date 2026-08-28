@@ -1,5 +1,6 @@
 """State message handler for MQTT."""
 
+import asyncio
 import logging
 import gzip
 from typing import Dict, Any
@@ -20,8 +21,10 @@ class StateMessageHandler:
             return {"type": "init", "payload": payload}
 
         try:
-            raw = gzip.decompress(payload)
-            proto = self._decode_state_proto(raw)
+            # gzip decompression can be non-trivial for large payloads;
+            # run in executor to avoid blocking the HA event loop.
+            raw = await asyncio.to_thread(gzip.decompress, payload)
+            proto = await asyncio.to_thread(self._decode_state_proto, raw)
 
             nested = proto.get(2, {})
             if not isinstance(nested, dict):

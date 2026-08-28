@@ -8,11 +8,11 @@
         "data": {
           "email": "Электронная почта",
           "password": "Пароль",
-          "region": "Сервер",
+          "phone_code": "Код страны",
           "app_type": "Приложение"
         },
         "data_description": {
-          "region": "Выберите регион вашего аккаунта",
+          "phone_code": "Выберите страну аккаунта (код страны)",
           "app_type": "Выберите мобильное приложение, которое вы используете"
         }
       }
@@ -33,11 +33,11 @@
         "title": "Настройки Neatsvor",
         "description": "**Устройство:** {device_name}\n**MAC:** {device_mac}\n**Email:** {email}",
         "data": {
-          "region": "Сервер",
+          "phone_code": "Код страны",
           "app_type": "Приложение"
         },
         "data_description": {
-          "region": "Изменить регион сервера",
+          "phone_code": "Изменить код страны аккаунта",
           "app_type": "Изменить тип приложения"
         }
       }

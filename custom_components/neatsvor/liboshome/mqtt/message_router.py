@@ -75,7 +75,7 @@ class MqttMessageRouter:
                 if asyncio.iscoroutinefunction(callback):
                     await callback(map_data)
                 else:
-                    loop = asyncio.get_event_loop()
+                    loop = asyncio.get_running_loop()
                     await loop.run_in_executor(None, callback, map_data)
             except Exception as e:
                 _LOGGER.error("Error in map callback: %s", e)
@@ -87,7 +87,7 @@ class MqttMessageRouter:
                 if asyncio.iscoroutinefunction(callback):
                     await callback(state_data)
                 else:
-                    loop = asyncio.get_event_loop()
+                    loop = asyncio.get_running_loop()
                     await loop.run_in_executor(None, callback, state_data)
             except Exception as e:
                 _LOGGER.error("Error in state callback: %s", e)
@@ -99,7 +99,7 @@ class MqttMessageRouter:
                 if asyncio.iscoroutinefunction(callback):
                     await callback(dp_data)
                 else:
-                    loop = asyncio.get_event_loop()
+                    loop = asyncio.get_running_loop()
                     await loop.run_in_executor(None, callback, dp_data)
             except Exception as e:
                 _LOGGER.error("Error in dp callback: %s", e)

@@ -79,7 +79,7 @@ class AsyncMapVisualizer:
         _LOGGER.info("render_static_map: title=%s, map_type=%s", title, map_type)
         
         try:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             
             # Запускаем рендер
             filename = await loop.run_in_executor(

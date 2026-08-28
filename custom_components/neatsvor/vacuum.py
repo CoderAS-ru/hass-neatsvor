@@ -62,7 +62,7 @@ class NeatsvorVacuum(CoordinatorEntity, StateVacuumEntity):
         )
 
         self._init_dynamic_features()
-
+        
     def _init_dynamic_features(self):
         """Initialize dynamic features from DP schema."""
         self._attr_fan_speed_list = ["quiet", "normal", "strong", "max"]
@@ -401,6 +401,15 @@ class NeatsvorVacuum(CoordinatorEntity, StateVacuumEntity):
             return None
 
         status_text = self.coordinator.data.get("status_text", "").lower()
+        
+        # Обновляем _attr_state при каждом вызове
+        if status_text:
+            language = self.hass.config.language if self.hass else "en"
+            localized = get_localized_status(status_text, language)
+            if self._attr_state != localized:
+                self._attr_state = localized
+                self.async_write_ha_state()
+                _LOGGER.debug("State updated via activity: %s -> %s", status_text, localized)
 
         activity_map = {
             # Русские ключи
@@ -415,25 +424,35 @@ class NeatsvorVacuum(CoordinatorEntity, StateVacuumEntity):
             "перемещение": VacuumActivity.RETURNING,
 
             # Английские ключи (из DP-схемы)
-            "cleaning": VacuumActivity.CLEANING,
-            "normal_clean": VacuumActivity.CLEANING,
-            "room_clean": VacuumActivity.CLEANING,
-            "zone_clean": VacuumActivity.CLEANING,
-            "returning": VacuumActivity.RETURNING,
+            "idle": VacuumActivity.IDLE,
+            "relocation": VacuumActivity.RETURNING,
+            "upgrade": VacuumActivity.IDLE,
+            "build_map": VacuumActivity.RETURNING,            
+            "pause": VacuumActivity.PAUSED,
             "recharge": VacuumActivity.DOCKED,
             "charging": VacuumActivity.DOCKED,
             "charge_finished": VacuumActivity.DOCKED,
+            "normal_clean": VacuumActivity.CLEANING,
+            "zone_clean": VacuumActivity.CLEANING,
+            "room_clean": VacuumActivity.CLEANING,
+            "focus_clean": VacuumActivity.CLEANING,            
+            "manual_control": VacuumActivity.RETURNING,
+            "malfunction": VacuumActivity.ERROR,
+            "sleep": VacuumActivity.IDLE,
+            "dust_collecting": VacuumActivity.CLEANING,
+            "wash_mop": VacuumActivity.DOCKED,
+            "fill_water": VacuumActivity.DOCKED,            
+            "dry_mop": VacuumActivity.DOCKED,
+            "station_self_clean": VacuumActivity.DOCKED,
+            "back_clean_mop": VacuumActivity.DOCKED,            
+            
+            "cleaning": VacuumActivity.CLEANING,
+            "returning": VacuumActivity.RETURNING,
             "docked": VacuumActivity.DOCKED,
             "paused": VacuumActivity.PAUSED,
-            "pause": VacuumActivity.PAUSED,
             "error": VacuumActivity.ERROR,
-            "malfunction": VacuumActivity.ERROR,
-            "idle": VacuumActivity.IDLE,
-            "sleep": VacuumActivity.IDLE,
             "sleeping": VacuumActivity.IDLE,
-            "relocation": VacuumActivity.RETURNING,
             "manual_control": VacuumActivity.PAUSED,
-            "dust_collecting": VacuumActivity.CLEANING,
         }
 
         for key, value in activity_map.items():

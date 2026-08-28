@@ -211,7 +211,7 @@ class NeatsvorCoordinator(DataUpdateCoordinator):
                             _LOGGER.warning("REST error (non-retryable): %s", e)
                             break
                 
-                if rest_error and not data.get("battery_level") and not data.get("status_code"):
+                if rest_error and data.get("battery_level") is None and data.get("status_code") is None:
                     _LOGGER.error("REST data fetch failed and no MQTT data available")
                     raise UpdateFailed(f"Failed to fetch data: {rest_error}")
 

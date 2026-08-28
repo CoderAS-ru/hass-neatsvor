@@ -1,5 +1,6 @@
 """DP message handler for MQTT."""
 
+import asyncio
 import logging
 from typing import List, Tuple, Any
 from custom_components.neatsvor.liboshome.mqtt.decoder import decode_dp_payload
@@ -18,9 +19,16 @@ class DpMessageHandler:
         """Parse DP message, return list of (dp_id, value)."""
         _LOGGER.debug("Processing DP, MAC: %s", self.mac)
         try:
-            result = list(decode_dp_payload(payload))
+            # Decoding involves gzip decompression + protobuf parsing.
+            # Run in executor to avoid blocking the HA event loop.
+            result = await asyncio.to_thread(_decode_dp_list, payload)
             _LOGGER.info("Successfully decoded DP: %s entries", len(result))
             return result
         except Exception as e:
             _LOGGER.error("Error decoding DP: %s", e)
             raise
+
+
+def _decode_dp_list(payload: bytes) -> List[Tuple[int, Any]]:
+    """Materialize decode_dp_payload generator in a thread."""
+    return list(decode_dp_payload(payload))

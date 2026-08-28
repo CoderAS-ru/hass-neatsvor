@@ -7,11 +7,11 @@
         "data": {
           "email": "Email",
           "password": "Password",
-          "region": "Server",
+          "phone_code": "Phone code",
           "app_type": "Application"
         },
         "data_description": {
-          "region": "Select your account region",
+          "phone_code": "Select your country phone code",
           "app_type": "Select the app you use"
         }
       }
@@ -33,11 +33,11 @@
         "title": "Neatsvor Settings",
         "description": "**Device:** {device_name}\n**MAC:** {device_mac}\n**Email:** {email}",
         "data": {
-          "region": "Server",
+          "phone_code": "Phone code",
           "app_type": "Application"
         },
         "data_description": {
-          "region": "Change server region",
+          "phone_code": "Change the country phone code",
           "app_type": "Change application type"
         }
       }

@@ -87,13 +87,47 @@ class NeatsvorEncoder:
                 _LOGGER.debug("Value is protobuf message of type %s", type(value).__name__)
                 body_any.Pack(value)
             elif isinstance(value, bytes):
-                # If it's already serialized bytes, try to parse as Any
+                # Value is expected to be a serialized google.protobuf.Any message
+                # (produced e.g. by body_any.SerializeToString() in callers like
+                # zone_encoder / room_clean). Try to parse it as Any first,
+                # and if it fails, treat it as raw protobuf and wrap it.
+                _LOGGER.debug("Value is bytes of length %s", len(value))
+                
+                parsed_any = any_pb2.Any()
                 try:
-                    body_any.ParseFromString(value)
-                except Exception:
-                    # If parsing fails, create new Any with these bytes
-                    body_any.value = value
-                    body_any.type_url = "type.googleapis.com/sweeper.UseMap"
+                    parsed_any.ParseFromString(value)
+                    if parsed_any.type_url:
+                        # It's a valid Any with type_url - use as is
+                        _LOGGER.debug("Valid Any with type_url: %s", parsed_any.type_url)
+                        body_any.CopyFrom(parsed_any)
+                    else:
+                        # Valid Any but no type_url - try to determine by DP
+                        _LOGGER.warning("Any without type_url for DP %s, using DP-based type", dp_id)
+                        message_type = self._get_message_type_by_dp(dp_id)
+                        if message_type:
+                            new_any = any_pb2.Any()
+                            new_any.value = parsed_any.value
+                            new_any.type_url = f"type.googleapis.com/{message_type}"
+                            body_any.CopyFrom(new_any)
+                            _LOGGER.debug("Wrapped bytes with DP-based type: %s", message_type)
+                        else:
+                            # Fallback to UseMap
+                            _LOGGER.warning("No type for DP %s, wrapping in UseMap", dp_id)
+                            body_any.value = value
+                            body_any.type_url = "type.googleapis.com/sweeper.UseMap"
+                except Exception as e:
+                    # Not a valid Any - treat as raw protobuf message
+                    _LOGGER.debug("Not a valid Any: %s, trying DP-based type", e)
+                    message_type = self._get_message_type_by_dp(dp_id)
+                    if message_type:
+                        body_any.value = value
+                        body_any.type_url = f"type.googleapis.com/{message_type}"
+                        _LOGGER.debug("Wrapped raw bytes with DP-based type: %s", message_type)
+                    else:
+                        # Fallback to UseMap
+                        _LOGGER.warning("Unknown bytes for DP %s, wrapping in UseMap", dp_id)
+                        body_any.value = value
+                        body_any.type_url = "type.googleapis.com/sweeper.UseMap"
             else:
                 # Normal handling for primitive types
                 body = bvsdk.MqttMsgBody()
@@ -134,6 +168,26 @@ class NeatsvorEncoder:
         except Exception as e:
             _LOGGER.error("Error creating command DP %s: %s", dp_id, e)
             raise
+
+    def _get_message_type_by_dp(self, dp_id: int) -> Optional[str]:
+        """
+        Get message type based on DP ID.
+        
+        Args:
+            dp_id: Data Point ID
+            
+        Returns:
+            Message type string or None if not known
+        """
+        # Map DP IDs to message types
+        dp_to_type = {
+            32: "sweeper.ZoneClean",   # zone_clean
+            31: "sweeper.Rooms",        # room_clean  
+            30: "sweeper.UseMap",       # map_reuse
+            14: "sweeper.UseMap",       # map_save
+            33: "sweeper.MapReuse",     # map_reuse_alt
+        }
+        return dp_to_type.get(dp_id)
 
     def _validate_value(self, dp_id: int, dp_type: int, value: Any, enum_map: Dict = None):
         """Validate value for DP."""

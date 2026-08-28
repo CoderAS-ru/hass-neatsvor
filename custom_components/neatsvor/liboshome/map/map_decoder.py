@@ -46,7 +46,7 @@ class MapDecoder:
             compressed = await f.read()
 
         # Decompress gzip in executor to avoid blocking event loop
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         data = await loop.run_in_executor(None, gzip.decompress, compressed)
 
         _LOGGER.debug("Loaded %s bytes", len(data))
@@ -346,6 +346,9 @@ class MapDecoder:
             map_data.width,
             map_data.height
         )
+
+        _LOGGER.warning("=== PROTOBUF TO DICT ===")
+        _LOGGER.warning("map_data.HasField('map_info'): %s", map_data.HasField('map_info'))
 
         # Extract trajectory
         trajectory_points = []
