@@ -1,0 +1,46 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Neatsvor Vacuum",
+        "description": "Please enter your BlackVision account credentials.\n\nYour password is only used for initial authentication and is not stored.",
+        "data": {
+          "email": "Email",
+          "password": "Password",
+          "phone_code": "Phone code",
+          "app_type": "Application"
+        },
+        "data_description": {
+          "phone_code": "Select your country phone code",
+          "app_type": "Select the app you use"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Invalid email or password",
+      "cannot_connect": "Failed to connect to server",
+      "no_data_center": "No data center found for this phone code. Please try another code.",
+      "unknown": "Unknown error",
+      "account_in_use": "Account is already connected in the official app. Please log out from the app and try again."
+    },
+    "abort": {
+      "already_configured": "Device is already configured"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Neatsvor Settings",
+        "description": "**Device:** {device_name}\n**MAC:** {device_mac}\n**Email:** {email}",
+        "data": {
+          "phone_code": "Phone code",
+          "app_type": "Application"
+        },
+        "data_description": {
+          "phone_code": "Change the country phone code",
+          "app_type": "Change application type"
+        }
+      }
+    }
+  }
+}
