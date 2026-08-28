@@ -1,4 +1,3 @@
-```markdown
 # Neatsvor Integration
 
 Управление пылесосами Neatsvor и Black Vision в Home Assistant.
