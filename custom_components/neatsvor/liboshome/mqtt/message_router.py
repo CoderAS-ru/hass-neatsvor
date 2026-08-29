@@ -24,7 +24,7 @@ class MqttMessageRouter:
             ('STATE_', StateMessageHandler(mac)),
             ('DP_DEV_', DpMessageHandler(mac)),
             ('DEVICE_ON_LINE_', None),
-            ('DP_APP_', None),
+            ('DP_APP_', self._dp_app_handler),
         ]
 
         # Lists for callbacks
@@ -68,6 +68,11 @@ class MqttMessageRouter:
         # If no handler found, just log
         _LOGGER.debug("Topic without handler: %s", topic_str)
 
+    async def _dp_app_handler(self, payload: bytes):
+        """Обработчик для подтверждения отправленных команд."""
+        # Просто логируем на уровне DEBUG
+        _LOGGER.debug("Received command confirmation via DP_APP")
+        
     async def _notify_map_callbacks(self, map_data: dict):
         """Notify all subscribers about new map."""
         for callback in self._map_callbacks:

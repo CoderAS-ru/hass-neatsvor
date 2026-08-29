@@ -35,7 +35,7 @@ async def encode_zone_clean_command(encoder, dp_id: int, x1: int, y1: int, x2: i
         _LOGGER.info("Zone clean: x1=%s, y1=%s, x2=%s, y2=%s, repeats=%s", x1, y1, x2, y2, repeats)
         _LOGGER.info("Origin: x=%s, y=%s", origin_x, origin_y)
 
-        # Применяем origin
+        # РџСЂРёРјРµРЅСЏРµРј origin
         final_x1 = x1 + origin_x
         final_y1 = y1 + origin_y
         final_x2 = x2 + origin_x
@@ -43,23 +43,23 @@ async def encode_zone_clean_command(encoder, dp_id: int, x1: int, y1: int, x2: i
 
         _LOGGER.info("After origin: final(%d,%d)-(%d,%d)", final_x1, final_y1, final_x2, final_y2)
 
-        # Масштабируем только если координаты НЕ в ячейках
+        # РњР°СЃС€С‚Р°Р±РёСЂСѓРµРј С‚РѕР»СЊРєРѕ РµСЃР»Рё РєРѕРѕСЂРґРёРЅР°С‚С‹ РќР• РІ СЏС‡РµР№РєР°С…
         if already_scaled:
-            # Координаты уже в ячейках — используем как есть
+            # РљРѕРѕСЂРґРёРЅР°С‚С‹ СѓР¶Рµ РІ СЏС‡РµР№РєР°С… вЂ” РёСЃРїРѕР»СЊР·СѓРµРј РєР°Рє РµСЃС‚СЊ
             scaled_x1 = final_x1
             scaled_y1 = final_y1
             scaled_x2 = final_x2
             scaled_y2 = final_y2
             _LOGGER.info("Coordinates already in cells, no scaling applied")
         else:
-            # Координаты в пикселях — масштабируем
+            # РљРѕРѕСЂРґРёРЅР°С‚С‹ РІ РїРёРєСЃРµР»СЏС… вЂ” РјР°СЃС€С‚Р°Р±РёСЂСѓРµРј
             scaled_x1 = int(round(final_x1 * COORDINATE_SCALE))
             scaled_y1 = int(round(final_y1 * COORDINATE_SCALE))
             scaled_x2 = int(round(final_x2 * COORDINATE_SCALE))
             scaled_y2 = int(round(final_y2 * COORDINATE_SCALE))
             _LOGGER.info("Coordinates scaled by %s", COORDINATE_SCALE)
 
-        # Убеждаемся, что координаты в правильном порядке
+        # РЈР±РµР¶РґР°РµРјСЃСЏ, С‡С‚Рѕ РєРѕРѕСЂРґРёРЅР°С‚С‹ РІ РїСЂР°РІРёР»СЊРЅРѕРј РїРѕСЂСЏРґРєРµ
         final_scaled_x1 = min(scaled_x1, scaled_x2)
         final_scaled_y1 = min(scaled_y1, scaled_y2)
         final_scaled_x2 = max(scaled_x1, scaled_x2)

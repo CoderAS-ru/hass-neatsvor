@@ -1846,12 +1846,12 @@ class NeatsvorCleanHistorySensor(CoordinatorEntity, SensorEntity):
                     async with aiofiles.open(png_path, 'rb') as f:
                         png_bytes = await f.read()
 
-                    # Store in camera prefetch
-                    camera.prefetch_image(record_id, png_bytes)
-                    _LOGGER.debug("Prefetched record %s", record_id)
+                    # Store in camera cache
+                    camera.update_image(record_id, png_bytes)
+                    _LOGGER.debug("Cached record %s", record_id)
             except Exception as e:
-                _LOGGER.error("Error prefetching record %s: %s", record_id, e)
-
+                _LOGGER.error("Error caching record %s: %s", record_id, e)
+            
     async def _download_record_map(self, record_id: int, auto_select: bool = False):
         """Download map for selected record."""
         try:
@@ -1941,10 +1941,13 @@ class NeatsvorCleanHistorySensor(CoordinatorEntity, SensorEntity):
                                     png_bytes = await f.read()
 
                                 camera = self.coordinator.clean_history_camera
-                                camera.prefetch_image(record_id, png_bytes)
-                                _LOGGER.info("Prefetched record %s for later", record_id)
+                                # Cache for later (if not current record)
+                                if camera._current_record_id != record_id:
+                                    camera._pending_image = png_bytes
+                                    camera._pending_record_id = record_id
+                                    _LOGGER.info("Cached record %s for later", record_id)
                         except Exception as e:
-                            _LOGGER.error("Error prefetching camera: %s", e)
+                            _LOGGER.error("Error caching camera: %s", e)
             else:
                 _LOGGER.error("Failed to save PNG for record %s", record_id)
 

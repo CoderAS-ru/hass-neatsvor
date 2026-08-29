@@ -347,8 +347,8 @@ class MapDecoder:
             map_data.height
         )
 
-        _LOGGER.warning("=== PROTOBUF TO DICT ===")
-        _LOGGER.warning("map_data.HasField('map_info'): %s", map_data.HasField('map_info'))
+        _LOGGER.debug("=== PROTOBUF TO DICT ===")
+        _LOGGER.debug("map_data.HasField('map_info'): %s", map_data.HasField('map_info'))
 
         # Extract trajectory
         trajectory_points = []
