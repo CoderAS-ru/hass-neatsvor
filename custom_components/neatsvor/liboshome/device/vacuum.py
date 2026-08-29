@@ -1120,9 +1120,8 @@ class NeatsvorVacuum:
         return f"Room_{room_id}"
 
     async def zone_clean(self, x1: int, y1: int, x2: int, y2: int, repeats: int = 1) -> bool:
-        """Clean a specific zone with coordinates."""
-        _LOGGER.warning("=== ZONE CLEAN CALLED ===")
-        _LOGGER.warning("Raw coords: x1=%s, y1=%s, x2=%s, y2=%s, repeats=%s", x1, y1, x2, y2, repeats)
+        """Clean a specific zone with coordinates (unified version with origin support)."""
+        _LOGGER.info("Zone clean: app(%d,%d)-(%d,%d), repeats=%d", x1, y1, x2, y2, repeats)
         
         dp_id = self._get_dp_id('zone_clean', 32)
         if dp_id is None:
@@ -1134,127 +1133,97 @@ class NeatsvorVacuum:
             _LOGGER.error("No map data available for zone cleaning")
             return False
         
-        map_width = map_data.get('width', 185)
-        map_height = map_data.get('height', 173)
+        # Get origin from map_data (always present, even if (0,0))
+        origin_x = map_data.get('origin', {}).get('x', 0)
+        origin_y = map_data.get('origin', {}).get('y', 0)
         
-        # Вычисляем multiple
-        if map_width < 100 and map_height < 100:
-            multiple = 8
-        elif map_width < 200 and map_height < 200:
-            multiple = 6
-        elif map_width >= 300 or map_height >= 300:
-            multiple = 2
-        else:
-            multiple = 4
+        # Use unified coordinate conversion
+        from custom_components.neatsvor.liboshome.map.map_utils import calculate_zone_coordinates
         
-        # Вычисляем высоту легенды
-        room_names = map_data.get('room_names', [])
-        if room_names:
-            legend_height = 50 + ((len(room_names) - 1) // 4 + 1) * 40
-        else:
-            legend_height = 0
+        robot_x1, robot_y1, robot_x2, robot_y2 = calculate_zone_coordinates(
+            x1, y1, x2, y2, origin_x, origin_y
+        )
         
-        _LOGGER.info(f"Map: {map_width}x{map_height}, multiple={multiple}, legend_height={legend_height}")
+        _LOGGER.info("Zone converted: robot(%d,%d)-(%d,%d), origin=(%d,%d)", 
+                     robot_x1, robot_y1, robot_x2, robot_y2, origin_x, origin_y)
         
-        # Конвертируем координаты из пикселей карты в координаты робота
-        original_x1 = int(round((x1) / multiple))
-        original_x2 = int(round((x2) / multiple))
-        original_y1 = int(round((y1 - legend_height) / multiple))
-        original_y2 = int(round((y2 - legend_height) / multiple))
-        
-        if original_x1 > original_x2:
-            original_x1, original_x2 = original_x2, original_x1
-        if original_y1 > original_y2:
-            original_y1, original_y2 = original_y2, original_y1
-        
-        if original_x1 < 0 or original_y1 < 0 or original_x2 > map_width or original_y2 > map_height:
-            _LOGGER.error(f"Zone out of bounds! Map: {map_width}x{map_height}, Zone: ({original_x1},{original_y1})-({original_x2},{original_y2})")
-            return False
-        
-        _LOGGER.info(f"Converted zone: ({original_x1},{original_y1})-({original_x2},{original_y2})")
-        
-        # Проверяем origin
-        robot_pos = map_data.get('robot_position', {})
-        _LOGGER.warning(f"Robot position: {robot_pos}")
-        
-        from custom_components.neatsvor.liboshome.mqtt.zone_encoder import encode_zone_clean_command
-        
-        _LOGGER.warning(f"=== FINAL COMMAND ===")
-        _LOGGER.warning(f"Converted: ({original_x1},{original_y1})-({original_x2},{original_y2})")
-        _LOGGER.warning(f"Robot position: {robot_pos}")
-        _LOGGER.warning(f"Map size: {map_width}x{map_height}")
-
-        # Отправляем режим уборки
+        # Send mode command once (not in loop)
         await self._send_dp_command('mode', 3)
         await asyncio.sleep(0.3)
         
-        # ВАЖНО: не передаём origin, так как координаты уже сконвертированы!
+        # Encode with origin=0 (coordinates already converted)
+        from custom_components.neatsvor.liboshome.mqtt.zone_encoder import encode_zone_clean_command
+        
         command_bytes = await encode_zone_clean_command(
-            self._encoder,
-            dp_id,
-            original_x1, original_y1,
-            original_x2, original_y2,
+            self._encoder, dp_id,
+            robot_x1, robot_y1,
+            robot_x2, robot_y2,
             repeats,
-            origin_x=0,
-            origin_y=0,
-            map_height=map_height
+            origin_x=0,  # already converted
+            origin_y=0
         )
         
         await self._command_sender.publish_command(command_bytes)
-        _LOGGER.info(f"Zone cleaning command sent with converted coords: ({original_x1},{original_y1})-({original_x2},{original_y2})")
+        _LOGGER.info("Zone cleaning command sent successfully")
         return True
-        
+    
     async def multiple_zones_clean(self, zones: List[Tuple[int, int, int, int, int]]) -> bool:
-        """Clean multiple zones."""
+        """Clean multiple zones (unified version with origin support)."""
         _LOGGER.info("Cleaning %s zones", len(zones))
 
-        try:
-            dp_id = self._get_dp_id('zone_clean', 32)
-            if dp_id is None:
-                _LOGGER.error("Cannot get DP ID for zone_clean")
-                return False
-
-            from custom_components.neatsvor.liboshome.mqtt.zone_encoder import encode_multiple_zones_command
-            
-            map_data = self._map_data
-            if not map_data:
-                _LOGGER.error("No map data available for multiple zone cleaning")
-                return False
-            
-            origin_x = map_data.get('origin', {}).get('x', 0)
-            origin_y = map_data.get('origin', {}).get('y', 0)
-            
-            adjusted_zones = []
-            for zone in zones:
-                if len(zone) >= 4:
-                    x1, y1, x2, y2 = zone[:4]
-                    repeats = zone[4] if len(zone) > 4 else 1
-                    
-                    robot_x1, robot_y1, robot_x2, robot_y2 = calculate_zone_coordinates(
-                        x1, y1, x2, y2, origin_x, origin_y
-                    )
-                    adjusted_zones.append((robot_x1, robot_y1, robot_x2, robot_y2, repeats))
-                else:
-                    _LOGGER.error("Invalid zone format: %s", zone)
-                    continue
-            
-            if not adjusted_zones:
-                _LOGGER.error("No valid zones after adjustment")
-                return False
-            
-            # Передаём origin в encoder
-            command_bytes = await encode_multiple_zones_command(
-                self._encoder, dp_id, adjusted_zones, origin_x, origin_y
-            )
-            await self._command_sender.publish_command(command_bytes)
-
-            _LOGGER.info("Command for %s zones sent (DP %s)", len(adjusted_zones), dp_id)
-            return True
-
-        except Exception as e:
-            _LOGGER.error("Error cleaning multiple zones: %s", e)
+        dp_id = self._get_dp_id('zone_clean', 32)
+        if dp_id is None:
+            _LOGGER.error("Cannot get DP ID for zone_clean")
             return False
-            
+
+        map_data = self._map_data
+        if not map_data:
+            _LOGGER.error("No map data available for multiple zone cleaning")
+            return False
+
+        origin_x = map_data.get('origin', {}).get('x', 0)
+        origin_y = map_data.get('origin', {}).get('y', 0)
+
+        # Convert all zones using unified function
+        from custom_components.neatsvor.liboshome.map.map_utils import calculate_zone_coordinates
+        
+        adjusted_zones = []
+        for zone in zones:
+            if len(zone) >= 4:
+                x1, y1, x2, y2 = zone[:4]
+                repeats = zone[4] if len(zone) > 4 else 1
+                
+                robot_x1, robot_y1, robot_x2, robot_y2 = calculate_zone_coordinates(
+                    x1, y1, x2, y2, origin_x, origin_y
+                )
+                adjusted_zones.append((robot_x1, robot_y1, robot_x2, robot_y2, repeats))
+                _LOGGER.debug("Zone converted: (%d,%d)-(%d,%d) -> (%d,%d)-(%d,%d)",
+                             x1, y1, x2, y2, robot_x1, robot_y1, robot_x2, robot_y2)
+            else:
+                _LOGGER.error("Invalid zone format: %s", zone)
+                continue
+
+        if not adjusted_zones:
+            _LOGGER.error("No valid zones after adjustment")
+            return False
+
+        # Send mode command once before all zones
+        await self._send_dp_command('mode', 3)
+        await asyncio.sleep(0.3)
+
+        # Encode with origin=0 (coordinates already converted)
+        from custom_components.neatsvor.liboshome.mqtt.zone_encoder import encode_multiple_zones_command
+        
+        command_bytes = await encode_multiple_zones_command(
+            self._encoder, dp_id, adjusted_zones,
+            origin_x=0,
+            origin_y=0
+        )
+        
+        await self._command_sender.publish_command(command_bytes)
+        _LOGGER.info("Command for %s zones sent successfully", len(adjusted_zones))
+        return True
+    
     # ------------------------------------------------------------------
     # Data and statistics
     # ------------------------------------------------------------------

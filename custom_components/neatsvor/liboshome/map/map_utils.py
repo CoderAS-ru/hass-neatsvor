@@ -31,7 +31,24 @@ def calculate_map_scale(width: int, height: int) -> int:
     else:
         return 4
 
-
+def calculate_legend_height(room_count: int) -> int:
+    """
+    Calculate legend height based on number of rooms.
+    Used by both renderer and zone converter to ensure consistency.
+    
+    Args:
+        room_count: Number of rooms on the map
+        
+    Returns:
+        int: Height of legend in pixels
+    """
+    if room_count == 0:
+        return 0
+    # 50px for title + (rows * 40px per row)
+    # Ceiling division for rows: (room_count - 1) // 4 + 1
+    rows = (room_count - 1) // 4 + 1
+    return 50 + rows * 40
+        
 def calculate_zone_coordinates(x1: int, y1: int, x2: int, y2: int, 
                                origin_x: int, origin_y: int, 
                                resolution: int = 10) -> Tuple[int, int, int, int]:

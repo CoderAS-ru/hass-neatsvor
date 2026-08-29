@@ -74,7 +74,7 @@ class NeatsvorLiveCamera(CoordinatorEntity, Camera):
         await super().async_added_to_hass()
         _LOGGER.info("Live camera added to hass, requesting map...")
         # Запускаем в фоне, не блокируя загрузку
-        asyncio.create_task(self._request_map_with_retry())
+        self.hass.async_create_task(self._request_map_with_retry())
 
     async def _request_map_with_retry(self, retry_count=5):
         """Request map with retry."""
@@ -209,7 +209,7 @@ class NeatsvorCloudMapCamera(CoordinatorEntity, Camera):
             self.coordinator.async_add_listener(self._handle_coordinator_update)
         )
 
-        asyncio.create_task(self._wait_for_cloud_maps())
+        self.hass.async_create_task(self._wait_for_cloud_maps())
 
     async def _wait_for_cloud_maps(self):
         """Wait for cloud_maps_sensor to be available."""
@@ -264,12 +264,6 @@ class NeatsvorCloudMapCamera(CoordinatorEntity, Camera):
                 else:
                     return f"{url}?t={timestamp}"
         return url
-
-    def prefetch_image(self, map_id: int, image_bytes: bytes):
-        """Prefetch image for faster switching."""
-        self._next_image = image_bytes
-        self._next_map_id = map_id
-        _LOGGER.debug("Prefetched image for map %s", map_id)
 
     async def async_update_image(self):
         """Update the camera image."""
@@ -470,12 +464,6 @@ class NeatsvorCleanHistoryCamera(Camera, CoordinatorEntity):
                     return f"{url}?t={timestamp}"
 
         return url
-
-    def prefetch_image(self, record_id: int, image_bytes: bytes):
-        """Prefetch image for faster switching."""
-        self._next_image = image_bytes
-        self._next_record_id = record_id
-        _LOGGER.debug("Prefetched image for record %s", record_id)
 
     def update_image(self, record_id: int, image_bytes: bytes):
         """Called by sensor when new image is available."""

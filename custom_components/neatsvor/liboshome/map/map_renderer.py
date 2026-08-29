@@ -118,7 +118,8 @@ class MapRenderer:
         y_offset = 0
         if show_legend and map_data.get('room_names'):
             # Increase space for legend with large font
-            legend_height = 50 + (len(map_data['room_names']) // 4 + 1) * 40
+            from custom_components.neatsvor.liboshome.map.map_utils import calculate_legend_height
+            legend_height = calculate_legend_height(len(map_data['room_names']))
             img_height += legend_height
             y_offset = legend_height
 

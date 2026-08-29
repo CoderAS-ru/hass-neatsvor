@@ -547,7 +547,7 @@ class NeatsvorCloudMapSelect(CoordinatorEntity, SelectEntity):
         await super().async_added_to_hass()
         _LOGGER.debug("CloudMapSelect added to hass")
 
-        asyncio.create_task(self._wait_for_cloud_maps())
+        self.hass.async_create_task(self._wait_for_cloud_maps())
 
     async def _wait_for_cloud_maps(self):
         """Wait for cloud_maps_sensor to be available."""

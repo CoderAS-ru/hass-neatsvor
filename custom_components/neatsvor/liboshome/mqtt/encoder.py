@@ -88,9 +88,6 @@ class NeatsvorEncoder:
                 body_any.Pack(value)
             elif isinstance(value, bytes):
                 # Value is expected to be a serialized google.protobuf.Any message
-                # (produced e.g. by body_any.SerializeToString() in callers like
-                # zone_encoder / room_clean). Try to parse it as Any first,
-                # and if it fails, treat it as raw protobuf and wrap it.
                 _LOGGER.debug("Value is bytes of length %s", len(value))
                 
                 parsed_any = any_pb2.Any()
@@ -111,8 +108,8 @@ class NeatsvorEncoder:
                             body_any.CopyFrom(new_any)
                             _LOGGER.debug("Wrapped bytes with DP-based type: %s", message_type)
                         else:
-                            # Fallback to UseMap
-                            _LOGGER.warning("No type for DP %s, wrapping in UseMap", dp_id)
+                            # Fallback - with explicit warning
+                            _LOGGER.warning("⚠️ FALLBACK: No type mapping for DP %s, wrapping in UseMap. This may cause issues!", dp_id)
                             body_any.value = value
                             body_any.type_url = "type.googleapis.com/sweeper.UseMap"
                 except Exception as e:
@@ -124,8 +121,8 @@ class NeatsvorEncoder:
                         body_any.type_url = f"type.googleapis.com/{message_type}"
                         _LOGGER.debug("Wrapped raw bytes with DP-based type: %s", message_type)
                     else:
-                        # Fallback to UseMap
-                        _LOGGER.warning("Unknown bytes for DP %s, wrapping in UseMap", dp_id)
+                        # Fallback - with explicit warning
+                        _LOGGER.warning("⚠️ FALLBACK: Unknown bytes for DP %s, wrapping in UseMap. This may cause issues!", dp_id)
                         body_any.value = value
                         body_any.type_url = "type.googleapis.com/sweeper.UseMap"
             else:
@@ -186,6 +183,8 @@ class NeatsvorEncoder:
             30: "sweeper.UseMap",       # map_reuse
             14: "sweeper.UseMap",       # map_save
             33: "sweeper.MapReuse",     # map_reuse_alt
+            4: "sweeper.MapData",       # map request
+            28: "sweeper.BuildMap",     # build map
         }
         return dp_to_type.get(dp_id)
 

@@ -466,6 +466,8 @@ class NeatsvorMapSensor(CoordinatorEntity, SensorEntity):
         self._width: int = 0
         self._height: int = 0
         self._resolution: int = 0
+        self._origin_x: int = 0
+        self._origin_y: int = 0
         self._robot_position: Optional[Dict[str, int]] = None
         self._charger_position: Optional[Dict[str, int]] = None
 
@@ -494,7 +496,8 @@ class NeatsvorMapSensor(CoordinatorEntity, SensorEntity):
             self._width = map_data.get('width', 0)
             self._height = map_data.get('height', 0)
             self._resolution = map_data.get('resolution', 0)
-
+            self._origin_x = map_data.get('origin', {}).get('x', 0)
+            self._origin_y = map_data.get('origin', {}).get('y', 0)
             self._robot_position = map_data.get('robot_position')
             self._charger_position = map_data.get('charger_position')
 
@@ -586,6 +589,12 @@ class NeatsvorMapSensor(CoordinatorEntity, SensorEntity):
             'width': self._width,
             'height': self._height,
             'resolution': self._resolution,
+            'origin_x': self._origin_x,  
+            'origin_y': self._origin_y,  
+            'origin': {                  
+                'x': self._origin_x,
+                'y': self._origin_y
+            },
             'last_update': self._last_update.isoformat() if self._last_update else None,
             'rooms': rooms_with_presets,
             'room_count': len(self._rooms),
@@ -741,7 +750,7 @@ class NeatsvorCloudMapsSensor(CoordinatorEntity, SensorEntity):
                 _LOGGER.info("Preloading PNGs for first %s cloud maps...", preload_count)
                 for i in range(preload_count):
                     map_id = self._maps[i]['id']
-                    asyncio.create_task(self._preload_cloud_map_png(map_id))
+                    self.hass.async_create_task(self._preload_cloud_map_png(map_id))
                 
                 # Автовыбор последней карты
                 if not self.selected_map_id:
@@ -1656,7 +1665,7 @@ class NeatsvorCleanHistorySensor(CoordinatorEntity, SensorEntity):
                         else:
                             if latest_id not in self._download_tasks or self._download_tasks[latest_id].done():
                                 _LOGGER.info("Auto-downloading new map for record %s", latest_id)
-                                self._download_tasks[latest_id] = asyncio.create_task(
+                                self._download_tasks[latest_id] = self.hass.async_create_task(
                                     self._download_record_map(latest_id, auto_select=True)
                                 )
                     else:
@@ -1699,7 +1708,7 @@ class NeatsvorCleanHistorySensor(CoordinatorEntity, SensorEntity):
         # If not downloaded - start download
         if latest_id not in self._download_tasks or self._download_tasks[latest_id].done():
             _LOGGER.info("Auto-downloading latest map for record %s", latest_id)
-            self._download_tasks[latest_id] = asyncio.create_task(
+            self._download_tasks[latest_id] = self.hass.async_create_task(
                 self._download_record_map(latest_id, auto_select=True)
             )
 
@@ -1755,8 +1764,7 @@ class NeatsvorCleanHistorySensor(CoordinatorEntity, SensorEntity):
 
                         _LOGGER.debug("Camera reset for record %s (was %s)", record_id, old_record)
 
-                    # Prefetch next and previous records (вынести за проверку, чтобы выполнялось всегда)
-                    asyncio.create_task(self._prefetch_nearby_records(i))
+                    self.hass.async_create_task(self._prefetch_nearby_records(i))
 
                 from pathlib import Path
                 import re
@@ -1792,7 +1800,7 @@ class NeatsvorCleanHistorySensor(CoordinatorEntity, SensorEntity):
                     if not record.get('downloaded'):
                         if record_id not in self._download_tasks or self._download_tasks[record_id].done():
                             _LOGGER.info("Starting download for record %s", record_id)
-                            self._download_tasks[record_id] = asyncio.create_task(
+                            self._download_tasks[record_id] = self.hass.async_create_task(
                                 self._download_record_map(record_id)
                             )
 
@@ -1969,7 +1977,7 @@ class NeatsvorCleanHistorySensor(CoordinatorEntity, SensorEntity):
         # If not downloaded - start download with auto-select
         if record_id not in self._download_tasks or self._download_tasks[record_id].done():
             _LOGGER.info("Starting download for record %s with auto-select", record_id)
-            self._download_tasks[record_id] = asyncio.create_task(
+            self._download_tasks[record_id] = self.hass.async_create_task(
                 self._download_record_map(record_id, auto_select=True)
             )
             return True
