@@ -1159,8 +1159,9 @@ class NeatsvorVacuum:
             robot_x1, robot_y1,
             robot_x2, robot_y2,
             repeats,
-            origin_x=0,  # already converted
-            origin_y=0
+            origin_x=0,
+            origin_y=0,
+            already_scaled=True
         )
         
         await self._command_sender.publish_command(command_bytes)
@@ -1217,7 +1218,8 @@ class NeatsvorVacuum:
         command_bytes = await encode_multiple_zones_command(
             self._encoder, dp_id, adjusted_zones,
             origin_x=0,
-            origin_y=0
+            origin_y=0,
+            already_scaled=True
         )
         
         await self._command_sender.publish_command(command_bytes)
