@@ -69,8 +69,8 @@ class MqttMessageRouter:
         _LOGGER.debug("Topic without handler: %s", topic_str)
 
     async def _dp_app_handler(self, payload: bytes):
-        """Обработчик для подтверждения отправленных команд."""
-        # Просто логируем на уровне DEBUG
+        """РћР±СЂР°Р±РѕС‚С‡РёРє РґР»СЏ РїРѕРґС‚РІРµСЂР¶РґРµРЅРёСЏ РѕС‚РїСЂР°РІР»РµРЅРЅС‹С… РєРѕРјР°РЅРґ."""
+        # РџСЂРѕСЃС‚Рѕ Р»РѕРіРёСЂСѓРµРј РЅР° СѓСЂРѕРІРЅРµ DEBUG
         _LOGGER.debug("Received command confirmation via DP_APP")
         
     async def _notify_map_callbacks(self, map_data: dict):
