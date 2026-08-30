@@ -452,7 +452,6 @@ class NeatsvorVacuum(CoordinatorEntity, StateVacuumEntity):
             "paused": VacuumActivity.PAUSED,
             "error": VacuumActivity.ERROR,
             "sleeping": VacuumActivity.IDLE,
-            "manual_control": VacuumActivity.PAUSED,
         }
 
         for key, value in activity_map.items():

@@ -108,10 +108,42 @@ class NeatsvorEncoder:
                             body_any.CopyFrom(new_any)
                             _LOGGER.debug("Wrapped bytes with DP-based type: %s", message_type)
                         else:
-                            # Fallback - with explicit warning
-                            _LOGGER.warning("⚠️ FALLBACK: No type mapping for DP %s, wrapping in UseMap. This may cause issues!", dp_id)
-                            body_any.value = value
-                            body_any.type_url = "type.googleapis.com/sweeper.UseMap"
+                            # Проверяем тип DP в схеме
+                            dp_type = self.dp_schema.get(dp_id, {}).get('type')
+                            if dp_type == 3:
+                                # Для типа 3 (сложные структуры) пробуем использовать код DP
+                                dp_code = self.dp_schema.get(dp_id, {}).get('code', '')
+                                if dp_code:
+                                    # Пытаемся построить тип из кода
+                                    constructed_type = f"sweeper.{dp_code.title().replace('_', '')}"
+                                    _LOGGER.warning("⚠️ Using constructed type for DP %s: %s", dp_id, constructed_type)
+                                    new_any = any_pb2.Any()
+                                    new_any.value = parsed_any.value
+                                    new_any.type_url = f"type.googleapis.com/{constructed_type}"
+                                    body_any.CopyFrom(new_any)
+                                else:
+                                    # Последний фолбэк
+                                    _LOGGER.warning("⚠️ FALLBACK: No type mapping for DP %s, wrapping in UseMap. This may cause issues!", dp_id)
+                                    body_any.value = value
+                                    body_any.type_url = "type.googleapis.com/sweeper.UseMap"
+                            else:
+                                # Если тип не 3 — это ошибка, логируем и используем фолбэк
+                                _LOGGER.warning("⚠️ FALLBACK: DP %s has type %s but bytes value, wrapping in UseMap", dp_id, dp_type)
+                                body_any.value = value
+                                body_any.type_url = "type.googleapis.com/sweeper.UseMap"
+                except Exception as e:
+                    # Not a valid Any - treat as raw protobuf message
+                    _LOGGER.debug("Not a valid Any: %s, trying DP-based type", e)
+                    message_type = self._get_message_type_by_dp(dp_id)
+                    if message_type:
+                        body_any.value = value
+                        body_any.type_url = f"type.googleapis.com/{message_type}"
+                        _LOGGER.debug("Wrapped raw bytes with DP-based type: %s", message_type)
+                    else:
+                        # Fallback - with explicit warning
+                        _LOGGER.warning("⚠️ FALLBACK: Unknown bytes for DP %s, wrapping in UseMap. This may cause issues!", dp_id)
+                        body_any.value = value
+                        body_any.type_url = "type.googleapis.com/sweeper.UseMap"
                 except Exception as e:
                     # Not a valid Any - treat as raw protobuf message
                     _LOGGER.debug("Not a valid Any: %s, trying DP-based type", e)
