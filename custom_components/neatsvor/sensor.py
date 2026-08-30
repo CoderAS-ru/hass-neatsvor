@@ -224,39 +224,6 @@ async def async_setup_entry(
     async_add_entities(entities)
     _LOGGER.info("Created %s sensors", len(entities))
 
-class NeatsvorDebugDPSchemaSensor(CoordinatorEntity, SensorEntity):
-    """Скрытый сенсор для отладки DP-схемы (невидим в UI)."""
-    
-    _attr_has_entity_name = True
-    _attr_translation_key = "dp_schema"
-    _attr_entity_registry_visible_default = False  # Скрыт по умолчанию
-
-    def __init__(self, coordinator):
-        super().__init__(coordinator)
-        device_id = coordinator.device_id
-        self._attr_unique_id = f"neatsvor_{device_id}_dp_schema"
-        self._attr_device_info = coordinator.device_info
-        self._attr_icon = "mdi:code-json"
-        self._attr_native_value = "OK"
-        self._schema = {}
-
-    @property
-    def extra_state_attributes(self) -> dict:
-        """Возвращает полную DP-схему для анализа."""
-        if not self.coordinator or not self.coordinator.vacuum:
-            return {}
-        
-        # Получаем схему из менеджера DP
-        if hasattr(self.coordinator.vacuum, 'dp_manager'):
-            schema = self.coordinator.vacuum.dp_manager.get_schema()
-            self._schema = schema
-            return {
-                "dp_schema": schema,
-                "total_dps": len(schema) if schema else 0,
-                "dp_ids": list(schema.keys()) if schema else []
-            }
-        return {}
-
         
 class NeatsvorBatterySensor(CoordinatorEntity, SensorEntity):
     """Battery sensor with dynamic icon."""
@@ -474,6 +441,65 @@ class NeatsvorSensor(CoordinatorEntity, SensorEntity):
                 }
 
         return None
+
+
+class NeatsvorDebugDPSchemaSensor(CoordinatorEntity, SensorEntity):
+    """Сенсор для отладки DP-схемы."""
+    
+    _attr_has_entity_name = True
+    _attr_translation_key = "dp_schema"
+    _attr_entity_registry_visible_default = True
+
+    def __init__(self, coordinator):
+        super().__init__(coordinator)
+        device_id = coordinator.device_id
+        self._attr_unique_id = f"neatsvor_{device_id}_debug_dp_schema"
+        self._attr_device_info = coordinator.device_info
+        self._attr_icon = "mdi:code-json"
+        self._attr_name = "DP Schema"
+        self._attr_native_value = "Waiting for schema..."
+        self._schema = {}
+        _LOGGER.info("✅ DP Schema sensor created with ID: %s", self._attr_unique_id)
+
+    @property
+    def native_value(self) -> str:
+        """Return status of DP schema loading."""
+        if not self.coordinator or not self.coordinator.vacuum:
+            return "No vacuum"
+        
+        if not hasattr(self.coordinator.vacuum, 'dp_manager'):
+            return "No dp_manager"
+        
+        try:
+            schema = self.coordinator.vacuum.dp_manager.to_encoder_schema()
+            if schema and len(schema) > 0:
+                return f"Loaded ({len(schema)} DPs)"
+            return "Empty schema"
+        except Exception as e:
+            return f"Error: {str(e)[:30]}"
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        """Возвращает полную DP-схему для анализа."""
+        if not self.coordinator or not self.coordinator.vacuum:
+            return {"status": "no vacuum"}
+        
+        if not hasattr(self.coordinator.vacuum, 'dp_manager'):
+            return {"status": "no dp_manager"}
+        
+        try:
+            schema = self.coordinator.vacuum.dp_manager.to_encoder_schema()
+            self._schema = schema
+            return {
+                "dp_schema": schema,
+                "total_dps": len(schema) if schema else 0,
+                "dp_ids": list(schema.keys()) if schema else []
+            }
+        except Exception as e:
+            return {
+                "status": "error",
+                "error": str(e)
+            }
         
 
 class NeatsvorMapSensor(CoordinatorEntity, SensorEntity):
