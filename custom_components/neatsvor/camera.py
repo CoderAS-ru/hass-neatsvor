@@ -36,7 +36,6 @@ async def async_setup_entry(
     if hasattr(coordinator.vacuum, 'cloud_maps'):
         cloud_camera = NeatsvorCloudMapCamera(coordinator)
         entities.append(cloud_camera)
-        coordinator.cloud_map_camera = cloud_camera
         _LOGGER.info("Added cloud map camera")
 
     # Clean history camera

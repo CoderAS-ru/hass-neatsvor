@@ -144,19 +144,6 @@ class NeatsvorEncoder:
                         _LOGGER.warning("⚠️ FALLBACK: Unknown bytes for DP %s, wrapping in UseMap. This may cause issues!", dp_id)
                         body_any.value = value
                         body_any.type_url = "type.googleapis.com/sweeper.UseMap"
-                except Exception as e:
-                    # Not a valid Any - treat as raw protobuf message
-                    _LOGGER.debug("Not a valid Any: %s, trying DP-based type", e)
-                    message_type = self._get_message_type_by_dp(dp_id)
-                    if message_type:
-                        body_any.value = value
-                        body_any.type_url = f"type.googleapis.com/{message_type}"
-                        _LOGGER.debug("Wrapped raw bytes with DP-based type: %s", message_type)
-                    else:
-                        # Fallback - with explicit warning
-                        _LOGGER.warning("⚠️ FALLBACK: Unknown bytes for DP %s, wrapping in UseMap. This may cause issues!", dp_id)
-                        body_any.value = value
-                        body_any.type_url = "type.googleapis.com/sweeper.UseMap"
             else:
                 # Normal handling for primitive types
                 body = bvsdk.MqttMsgBody()
