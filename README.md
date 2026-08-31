@@ -219,7 +219,7 @@ variables:
   # ========== ENTITY NAMES (REPLACE WITH YOUR OWN) ==========
   vacuum_status_entity: "sensor.neatsvor_<device_id>_status"
   vacuum_clean_history: "sensor.neatsvor_<device_id>_clean_history"
-  vacuum_map_data: "sensor.neatsvor_<device_id>"
+  vacuum_map_data: "sensor.neatsvor_<device_id>_map_data"
   vacuum_clean_time: "sensor.neatsvor_<device_id>_current_clean_time"
   vacuum_clean_area: "sensor.neatsvor_<device_id>_current_clean_area"
   vacuum_battery: "sensor.neatsvor_<device_id>_battery"
