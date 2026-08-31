@@ -166,15 +166,26 @@ After this, you can use voice commands in the "Smart Home with Alice" app:
 
 ## Services
 
-| Service |	Description |
+| Service | Description |
 |---------|-------------|
-| `neatsvor.vacuum_clean_zone` |	Start zone cleaning |
-| `neatsvor.clean_room_with_preset` |	Start room cleaning using saved presets |
-| `neatsvor.set_reference_map` |	Set the current map as a reference |
-| `neatsvor.restore_reference_map` |	Restore room configuration from the reference map |
-| `neatsvor.request_all_data` |	Request all data (like the official app) |
-| `neatsvor.build_map` |	Perform a fast map build without cleaning |
-| `neatsvor.empty_dust` |	Force empty the dust container |
+| `neatsvor.vacuum_clean_zone` | Start zone cleaning |
+| `neatsvor.clean_room_with_preset` | Clean a room using saved presets |
+| `neatsvor.set_reference_map` | Set the current map as reference |
+| `neatsvor.restore_reference_map` | Restore room config from reference map |
+| `neatsvor.compare_with_reference` | Compare current map with reference |
+| `neatsvor.request_all_data` | Request all data like the official app |
+| `neatsvor.request_map` | Request the current map |
+| `neatsvor.build_map` | Fast map build without cleaning |
+| `neatsvor.empty_dust` | Force empty the dust bin |
+| `neatsvor.use_cloud_map` | Use a specific cloud map as current |
+| `neatsvor.use_selected_cloud_map` | Use the selected cloud map as current |
+| `neatsvor.force_load_history` | Force-load all cleaning history maps |
+| `neatsvor.cleanup_maps` | Remove old realtime maps and metadata |
+| `neatsvor.cleanup_history_maps` | Clean up old history maps |
+| `neatsvor.cleanup_all_except_current` | Clean up all history maps except current |
+| `neatsvor.force_update_maps` | Force-refresh all map-related sensors |
+| `neatsvor.save_select_states` | Save current select-entity states |
+| `neatsvor.restore_select_states` | Restore saved select-entity states |
 
 ## Example Automation: Status Notifications
 
@@ -260,7 +271,7 @@ variables:
 Logs can be viewed at **Settings → System → Logs** → select custom_components.neatsvor.
 
 ## Known Limitations
-- Zone cleaning requires a map with origin (0,0) — works on most devices
+- Zone cleaning coordinates are automatically adjusted for the map's origin offset
 - Map editing (splitting/merging rooms) is not implemented
 - Using multiple apps simultaneously requires separate integration instances
 
