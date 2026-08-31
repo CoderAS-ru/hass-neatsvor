@@ -201,7 +201,7 @@ Make sure you have the following sensors from the Neatsvor integration:
 
 - `sensor.neatsvor_<device_id>_status` — current vacuum status.
 - `sensor.neatsvor_<device_id>_clean_history` — cleaning history records.
-- `sensor.neatsvor_<device_id>` — map data with the `map_path` attribute.
+- `sensor.neatsvor_<device_id>_map_data` — map data with the `map_path` attribute.
 - `sensor.neatsvor_<device_id>_current_clean_time` — current cleaning time.
 - `sensor.neatsvor_<device_id>_current_clean_area` — current cleaning area.
 - `sensor.neatsvor_<device_id>_battery` — battery level.
