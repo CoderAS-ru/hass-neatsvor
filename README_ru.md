@@ -219,7 +219,7 @@ yandex_smart_home:
 
 - `sensor.neatsvor_<device_id>_status` — текущий статус пылесоса.
 - `sensor.neatsvor_<device_id>_clean_history` — записи истории уборок.
-- `sensor.neatsvor_<device_id>` — данные карты с атрибутом `map_path`.
+- `sensor.neatsvor_<device_id>_map_data` — данные карты с атрибутом `map_path`.
 - `sensor.neatsvor_<device_id>_current_clean_time` — текущее время уборки.
 - `sensor.neatsvor_<device_id>_current_clean_area` — текущая площадь уборки.
 - `sensor.neatsvor_<device_id>_battery` — уровень заряда батареи.
