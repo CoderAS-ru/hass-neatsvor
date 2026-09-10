@@ -763,8 +763,10 @@ class NeatsvorCleanHistorySelect(CoordinatorEntity, SelectEntity):
                 _LOGGER.info("Restored saved record: %s", saved_option)
 
                 if sensor.selected_record_id != self._saved_record_id:
-                    sensor.selected_record_id = self._saved_record_id
-                    sensor.async_write_ha_state()
+                    # Загружаем карту сохранённой записи через сенсор,
+                    # чтобы камера обновилась синхронно с выбором.
+                    _LOGGER.info("Loading saved record %s into sensor", self._saved_record_id)
+                    await sensor.async_load_and_select(self._saved_record_id)
             else:
                 # Автоматически выбираем первую запись, если нет сохранённой
                 first_option = options[0]
@@ -777,10 +779,10 @@ class NeatsvorCleanHistorySelect(CoordinatorEntity, SelectEntity):
                 if hasattr(self.coordinator, 'select_storage'):
                     await self.coordinator.select_storage.async_set('last_clean_history', str(first_record_id))
 
-                # Уведомляем сенсор о выборе (без загрузки карты)
+                # Уведомляем сенсор о выборе (с загрузкой карты для камеры)
                 if sensor.selected_record_id != first_record_id:
-                    sensor.selected_record_id = first_record_id
-                    sensor.async_write_ha_state()
+                    await sensor.async_load_and_select(first_record_id)
+                    _LOGGER.info("Loaded first record %s into sensor", first_record_id)
 
         self.async_write_ha_state()
 

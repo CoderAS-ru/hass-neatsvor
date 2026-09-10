@@ -1712,12 +1712,13 @@ class NeatsvorCleanHistorySensor(CoordinatorEntity, SensorEntity):
                             len(self._records), 
                             sum(1 for r in self._records if r['downloaded']))
 
-                # ✅ Исправленная логика: всегда проверяем наличие новых записей
-                if self._records:
+                # Авто-выбор новейшей записи только при первом запуске.
+                # НЕ перебиваем выбор пользователя (восстановленный селектом)
+                # при каждом обновлении координатора.
+                if self._records and self.selected_record_id is None:
                     latest_record = self._records[0]
                     latest_id = latest_record['record_id']
                     
-                    # Если это новая запись (отличается от выбранной)
                     if self.selected_record_id != latest_id:
                         _LOGGER.info("New history record detected: %s (was %s)", latest_id, self.selected_record_id)
                         
@@ -1897,7 +1898,10 @@ class NeatsvorCleanHistorySensor(CoordinatorEntity, SensorEntity):
         if not record:
             return
 
-        # If PNG already exists
+        # If PNG already exists - store in prefetch cache (NOT current image!)
+        # Важно: НЕ вызываем camera.update_image(), т.к. это перезапишет кадр
+        # выбранной записи картинкой соседней. Кэшируем в _next_* - картинка
+        # появится мгновенно, когда пользователь переключится на эту запись.
         if record.get('png_path'):
             try:
                 import aiofiles
@@ -1907,9 +1911,10 @@ class NeatsvorCleanHistorySensor(CoordinatorEntity, SensorEntity):
                     async with aiofiles.open(png_path, 'rb') as f:
                         png_bytes = await f.read()
 
-                    # Store in camera cache
-                    camera.update_image(record_id, png_bytes)
-                    _LOGGER.debug("Cached record %s", record_id)
+                    # Store in camera prefetch cache
+                    camera._next_image = png_bytes
+                    camera._next_record_id = record_id
+                    _LOGGER.debug("Cached record %s in prefetch (next)", record_id)
             except Exception as e:
                 _LOGGER.error("Error caching record %s: %s", record_id, e)
             
