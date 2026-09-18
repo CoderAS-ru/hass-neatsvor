@@ -687,6 +687,9 @@ class NeatsvorCleanHistorySelect(CoordinatorEntity, SelectEntity):
         self._record_map = {}  # record_id -> option
 
         self._saved_record_id = self._get_saved_value()
+        # Восстановление сохранённого выбора выполняем один раз за сессию,
+        # чтобы не перебивать авто-выбор последней карты после уборки.
+        self._restore_done = False
         _LOGGER.debug("CleanHistorySelect initialized")
         coordinator.clean_history_select = self
 
@@ -756,33 +759,43 @@ class NeatsvorCleanHistorySelect(CoordinatorEntity, SelectEntity):
         self._attr_options = options
 
         if options:
-            # Restore saved selection if available
-            if self._saved_record_id and self._saved_record_id in self._record_map:
-                saved_option = self._record_map[self._saved_record_id]
-                self._attr_current_option = saved_option
-                _LOGGER.info("Restored saved record: %s", saved_option)
+            sensor_selected = sensor.selected_record_id
 
-                if sensor.selected_record_id != self._saved_record_id:
-                    # Загружаем карту сохранённой записи через сенсор,
-                    # чтобы камера обновилась синхронно с выбором.
-                    _LOGGER.info("Loading saved record %s into sensor", self._saved_record_id)
+            # Одноразовое восстановление сохранённого выбора при старте.
+            # Далее «источник истины» — выбранная в сенсоре запись, поэтому
+            # авто-выбор последней карты после уборки селект не перебивает.
+            if not self._restore_done:
+                self._restore_done = True
+                if (self._saved_record_id and self._saved_record_id in self._record_map
+                        and sensor_selected != self._saved_record_id):
+                    _LOGGER.info("Restoring saved history record %s", self._saved_record_id)
                     await sensor.async_load_and_select(self._saved_record_id)
+                    sensor_selected = sensor.selected_record_id
+
+            if sensor_selected and sensor_selected in self._record_map:
+                # Показываем реально выбранную запись и синхронизируем storage
+                self._attr_current_option = self._record_map[sensor_selected]
+                if self._saved_record_id != sensor_selected:
+                    self._saved_record_id = sensor_selected
+                    if hasattr(self.coordinator, 'select_storage'):
+                        await self.coordinator.select_storage.async_set(
+                            'last_clean_history', str(sensor_selected)
+                        )
             else:
-                # Автоматически выбираем первую запись, если нет сохранённой
+                # Ничего не выбрано либо запись не найдена — берём новейшую
                 first_option = options[0]
                 first_record_id = self._record_options[first_option]
                 self._attr_current_option = first_option
                 self._saved_record_id = first_record_id
                 _LOGGER.info("Auto-selected first record: %s", first_option)
 
-                # Сохраняем выбор
                 if hasattr(self.coordinator, 'select_storage'):
-                    await self.coordinator.select_storage.async_set('last_clean_history', str(first_record_id))
+                    await self.coordinator.select_storage.async_set(
+                        'last_clean_history', str(first_record_id)
+                    )
 
-                # Уведомляем сенсор о выборе (с загрузкой карты для камеры)
-                if sensor.selected_record_id != first_record_id:
+                if sensor_selected != first_record_id:
                     await sensor.async_load_and_select(first_record_id)
-                    _LOGGER.info("Loaded first record %s into sensor", first_record_id)
 
         self.async_write_ha_state()
 

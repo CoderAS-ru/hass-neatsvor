@@ -1637,6 +1637,11 @@ class NeatsvorCleanHistorySensor(CoordinatorEntity, SensorEntity):
         self._last_update = datetime.now()
         self._initial_load_done = False
         self._previous_status = ""
+        # Трекинг последней известной (новейшей) записи истории —
+        # нужен для авто-выбора карты после завершения уборки.
+        self._last_latest_id = None
+        # Последняя запись, о которой сообщил координатор (data["last_clean"]["record_id"])
+        self._last_auto_record_id = None
 
         _LOGGER.debug("CleanHistorySensor initialized")
 
@@ -1653,18 +1658,45 @@ class NeatsvorCleanHistorySensor(CoordinatorEntity, SensorEntity):
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
         if self.coordinator and self.coordinator.data:
+            data = self.coordinator.data
+
             # Получаем текущий и предыдущий статусы
-            current_status = self.coordinator.data.get("status_text", "").lower()
+            current_status = data.get("status_text", "").lower()
             previous_status = getattr(self, '_previous_status', "").lower()
-            
+
             # Сохраняем текущий статус для следующего сравнения
             self._previous_status = current_status
-            
-            # Проверяем переход: был "возврат", стал "зарядка"
-            if ("returning" in previous_status or "возврат" in previous_status) and \
-               ("charging" in current_status or "зарядк" in current_status):
-                _LOGGER.info("Transition from returning to charging detected, loading latest history map...")
-                self.hass.async_create_task(self._auto_load_latest_map())
+
+            # 1) Переход "возврат на базу" -> "зарядка" = уборка завершена
+            finished_transition = (
+                ("returning" in previous_status or "возврат" in previous_status)
+                and ("charging" in current_status or "зарядк" in current_status)
+            )
+
+            # 2) Или в облаке появилась НОВАЯ запись о завершённой уборке:
+            #    координатор каждый цикл забирает самую свежую запись в last_clean,
+            #    её record_id и есть идентификатор последней уборки.
+            last_clean = data.get("last_clean") or {}
+            new_record_id = last_clean.get("record_id")
+            previous_auto_id = self._last_auto_record_id
+
+            new_finished_record = (
+                new_record_id is not None
+                and previous_auto_id is not None
+                and new_record_id != previous_auto_id
+            )
+
+            if new_record_id is not None:
+                self._last_auto_record_id = new_record_id
+
+            if finished_transition or new_finished_record:
+                _LOGGER.info(
+                    "Cleaning finished (transition=%s, new_record=%s, previous=%s) - loading latest history map",
+                    finished_transition, new_record_id, previous_auto_id
+                )
+                self.hass.async_create_task(
+                    self._auto_load_latest_map(previous_record_id=previous_auto_id)
+                )
             else:
                 # Стандартное обновление
                 self.hass.async_create_task(self._load_history())
@@ -1712,16 +1744,27 @@ class NeatsvorCleanHistorySensor(CoordinatorEntity, SensorEntity):
                             len(self._records), 
                             sum(1 for r in self._records if r['downloaded']))
 
-                # Авто-выбор новейшей записи только при первом запуске.
-                # НЕ перебиваем выбор пользователя (восстановленный селектом)
-                # при каждом обновлении координатора.
-                if self._records and self.selected_record_id is None:
+                # Авто-выбор новейшей записи:
+                #  - при первом запуске (selected_record_id is None);
+                #  - когда появилась НОВАЯ запись (завершилась уборка).
+                # При обычных опросах выбор пользователя НЕ перебиваем.
+                if self._records:
                     latest_record = self._records[0]
                     latest_id = latest_record['record_id']
-                    
-                    if self.selected_record_id != latest_id:
-                        _LOGGER.info("New history record detected: %s (was %s)", latest_id, self.selected_record_id)
-                        
+
+                    is_new_record = (
+                        self._last_latest_id is not None
+                        and latest_id != self._last_latest_id
+                    )
+
+                    should_auto_select = self.selected_record_id is None or is_new_record
+
+                    if should_auto_select and self.selected_record_id != latest_id:
+                        _LOGGER.info(
+                            "Auto-selecting latest record %s (was %s, last known %s)",
+                            latest_id, self.selected_record_id, self._last_latest_id
+                        )
+
                         if latest_record.get('downloaded') and latest_record.get('png_path'):
                             await self.select_record(latest_id)
                         else:
@@ -1731,7 +1774,12 @@ class NeatsvorCleanHistorySensor(CoordinatorEntity, SensorEntity):
                                     self._download_record_map(latest_id, auto_select=True)
                                 )
                     else:
-                        _LOGGER.debug("No new records, current selected: %s", self.selected_record_id)
+                        _LOGGER.debug(
+                            "History poll: latest=%s, current selected=%s",
+                            latest_id, self.selected_record_id
+                        )
+
+                    self._last_latest_id = latest_id
 
                 # Clean up old maps (keep last 50)
                 await self._cleanup_old_maps()
@@ -1749,29 +1797,81 @@ class NeatsvorCleanHistorySensor(CoordinatorEntity, SensorEntity):
             self._loading = False
             self.async_write_ha_state()
 
-    async def _auto_load_latest_map(self):
-        """Automatically load the latest map on initialization."""
-        if not self._records:
-            _LOGGER.debug("No records available for auto-load")
+    async def _auto_load_latest_map(self, previous_record_id: Optional[int] = None,
+                                    retries: int = 8, delay: float = 5.0):
+        """Автоматически загрузить и выбрать карту ПОСЛЕДНЕЙ завершённой уборки.
+
+        Вызывается при завершении уборки: либо по переходу статуса
+        «возврат на базу» → «зарядка», либо когда координатор увидел в облаке
+        новую запись (data["last_clean"]["record_id"]).
+
+        Облако публикует запись о уборке с задержкой, поэтому список истории
+        обновляется с повторами, пока не появится новая запись.
+        """
+        if not self.coordinator or not self.coordinator.vacuum:
             return
 
-        # Take the most recent record (first in the list, as API returns from newest to oldest)
-        latest_record = self._records[0]
-        latest_id = latest_record['record_id']
+        if previous_record_id is None:
+            previous_record_id = self._last_latest_id
 
-        _LOGGER.info("Auto-loading latest map for record %s", latest_id)
+        _LOGGER.info("Auto-loading latest history map (previous latest: %s)", previous_record_id)
 
-        # If map is already downloaded - just select it
-        if latest_record.get('downloaded') and latest_record.get('png_path'):
-            _LOGGER.info("Latest map already downloaded for record %s", latest_id)
-            await self.select_record(latest_id)
+        target_id = None
+        for attempt in range(max(1, retries)):
+            # Свежий список истории из облака
+            await self._load_history()
+
+            # Приоритет — record_id, о котором сообщил координатор (last_clean),
+            # затем — самая свежая запись в списке истории.
+            last_clean = (self.coordinator.data or {}).get("last_clean") or {}
+            candidates = []
+            if last_clean.get("record_id") is not None:
+                candidates.append(last_clean.get("record_id"))
+            if self._records:
+                candidates.append(self._records[0]['record_id'])
+
+            for candidate in candidates:
+                if candidate is None:
+                    continue
+                if previous_record_id is None or candidate != previous_record_id:
+                    target_id = candidate
+                    break
+
+            if target_id is not None:
+                _LOGGER.info("New cleaning record %s detected (previous %s)", target_id, previous_record_id)
+                break
+
+            if attempt < retries - 1:
+                _LOGGER.debug(
+                    "New cleaning record is not published yet, retry %s/%s in %ss",
+                    attempt + 1, retries, delay
+                )
+                await asyncio.sleep(delay)
+
+        if target_id is None:
+            # Новая запись так и не появилась — выбираем самую свежую из имеющихся
+            if not self._records:
+                _LOGGER.debug("No records available for auto-load")
+                return
+            target_id = self._records[0]['record_id']
+
+        record = next((r for r in self._records if r['record_id'] == target_id), None)
+        if record is None:
+            _LOGGER.warning("Record %s not found in history list for auto-load", target_id)
             return
 
-        # If not downloaded - start download
-        if latest_id not in self._download_tasks or self._download_tasks[latest_id].done():
-            _LOGGER.info("Auto-downloading latest map for record %s", latest_id)
-            self._download_tasks[latest_id] = self.hass.async_create_task(
-                self._download_record_map(latest_id, auto_select=True)
+        _LOGGER.info("Auto-selecting latest cleaning record %s", target_id)
+
+        # Карта уже есть — просто выбираем запись (это обновит камеру и селект)
+        if record.get('downloaded') and record.get('png_path'):
+            await self.select_record(target_id)
+            return
+
+        # Карты нет — скачиваем и автоматически выбираем
+        if target_id not in self._download_tasks or self._download_tasks[target_id].done():
+            _LOGGER.info("Auto-downloading latest map for record %s", target_id)
+            self._download_tasks[target_id] = self.hass.async_create_task(
+                self._download_record_map(target_id, auto_select=True)
             )
 
     def _get_cached_png_path(self, record_id: int, clean_time: str = None):

@@ -184,6 +184,10 @@ class NeatsvorCoordinator(DataUpdateCoordinator):
                                     _LOGGER.warning("Error parsing time: %s", e)
 
                             data["last_clean"] = {
+                                # record_id позволяет однозначно сопоставить последнюю
+                                # уборку с записью в списке истории уборок (селект/камера).
+                                "record_id": record.get("recordId"),
+                                "clean_time_raw": clean_time_str,
                                 "clean_time": clean_time,
                                 "clean_duration": record.get("cleanLength", 0) // 60,
                                 "clean_area": record.get("cleanArea", 0) / 10,
