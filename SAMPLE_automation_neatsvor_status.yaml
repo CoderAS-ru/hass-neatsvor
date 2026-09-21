@@ -14,7 +14,7 @@ alias: "Neatsvor: Уведомления о статусе"
 description: Отправляет уведомления при изменении статуса пылесоса
 triggers:
   - entity_id:
-      - sensor.neatsvor_<device_id>_status  # Замените на ваш сенсор статуса
+      - sensor.s700_status  # Замените на ваш сенсор статуса
     not_to:
       - unknown
       - unavailable
@@ -48,13 +48,16 @@ actions:
       # ============================================================
       # ИМЕНА СУЩНОСТЕЙ (ЗАМЕНИТЕ НА СВОИ)
       # ============================================================
-      # Сенсоры вашего пылесоса (формат: neatsvor_<device_id>_*)
-      vacuum_status_entity: "sensor.neatsvor_<device_id>_status"           # Статус уборки
-      vacuum_clean_history: "sensor.neatsvor_<device_id>_clean_history"    # История уборок
-      vacuum_map_data: "sensor.neatsvor_<device_id>_map_data"              # Данные карты (должен иметь map_path)
-      vacuum_clean_time: "sensor.neatsvor_<device_id>_current_clean_time"  # Текущее время уборки
-      vacuum_clean_area: "sensor.neatsvor_<device_id>_current_clean_area"  # Текущая площадь
-      vacuum_battery: "sensor.neatsvor_<device_id>_battery"                # Уровень заряда
+      # Сенсоры вашего пылесоса
+      vacuum_status_entity: "sensor.ВАША_МОДЕЛЬ_status"                # Статус уборки
+      vacuum_clean_history: "sensor.ВАША_МОДЕЛЬ_clean_history"         # История уборок
+      vacuum_map_data: "sensor.ВАША_МОДЕЛЬ"                            # Данные карты (должен иметь map_path)
+      vacuum_clean_time: "sensor.ВАША_МОДЕЛЬ_current_clean_time"       # Текущее время уборки
+      vacuum_clean_area: "sensor.ВАША_МОДЕЛЬ_current_clean_area"       # Текущая площадь
+      vacuum_battery: "sensor.ВАША_МОДЕЛЬ_battery"                     # Уровень заряда
+      last_clean_time_entity: "sensor.ВАША_МОДЕЛЬ_last_clean"          # Время последней уборки
+      last_clean_duration_entity: "sensor.ВАША_МОДЕЛЬ_last_clean_duration"  # Длительность последней уборки
+      last_clean_area_entity: "sensor.ВАША_МОДЕЛЬ_last_clean_area"     # Площадь последней уборки
 
   - choose:
       # ============================================================
@@ -165,46 +168,64 @@ actions:
                   trigger.from_state.state.lower() or 'returning' in
                   trigger.from_state.state.lower() }}
         sequence:
-          - delay:
-              seconds: 2
+          # Запоминаем ID текущей (старой) записи, чтобы дождаться появления новой
           - variables:
-              last_record_id: "{{ state_attr(vacuum_clean_history, 'selected_record_id') }}"
-              last_record: >-
-                {% set records = state_attr(vacuum_clean_history, 'records') %}
-                {% for record in records if record.record_id == last_record_id %}
-                  {{ record }}
-                {% endfor %}
-              last_time: "{{ last_record.clean_time if last_record else 'неизвестно' }}"
-              last_duration: "{{ last_record.clean_duration if last_record else 0 }}"
-              last_area: "{{ last_record.clean_area if last_record else 0 }}"
-              clean_time: "{{ states(vacuum_clean_time) }}"
-              clean_area: "{{ states(vacuum_clean_area) }}"
-              battery: "{{ states(vacuum_battery) }}"
-              last_png_path: "{{ last_record.png_path if last_record else '' }}"
+              baseline_record_id: >-
+                {{ ((state_attr(vacuum_clean_history, 'records') or []) |
+                first).record_id | int(0) }}
+          # Ждём появления новой записи (до 180 секунд)
+          - wait_template: >-
+              {% set r = (state_attr(vacuum_clean_history, 'records') or []) |
+              first %} {{ r is mapping and (((r.clean_time | as_timestamp(0)) >
+              (now().timestamp() - 1800))
+                 or ((r.record_id | int(0)) > baseline_record_id)) }}
+            timeout:
+              seconds: 180
+            continue_on_timeout: true
+          # Собираем данные из последней записи
+          - variables:
+              latest_record: >-
+                {{ (state_attr(vacuum_clean_history, 'records') or []) | first
+                }}
+              last_time: >-
+                {{ (latest_record.clean_time | as_datetime |
+                as_local).strftime('%d.%m.%Y %H:%M') if latest_record is mapping
+                else 'неизвестно' }}
+              last_duration: >-
+                {{ latest_record.clean_duration if latest_record is mapping else
+                0 }}
+              last_area: >-
+                {{ latest_record.clean_area if latest_record is mapping else 0
+                }}
+              clean_time: '{{ states(vacuum_clean_time) }}'
+              clean_area: '{{ states(vacuum_clean_area) }}'
+              battery: '{{ states(vacuum_battery) }}'
+              last_png_path: '{{ latest_record.png_path if latest_record is mapping else '''' }}'
               latest_map: >-
                 {{ last_png_path | replace('/config/www', '/local') if
-                last_png_path else '' }}
-              full_url: "{{ external_url }}{{ latest_map }}"
+                last_png_path else (state_attr(vacuum_clean_history,
+                'entity_picture') or '') }}
+              full_url: '{{ external_url }}{{ latest_map }}'
               message: |-
                 ✅ Уборка завершена!
                 📅 Время: {{ last_time }}
-                ⏱️ Длительность: {{ clean_time }} мин
-                📏 Площадь: {{ clean_area }} м²
+                ⏱️ Длительность: {{ last_duration }} мин
+                📏 Площадь: {{ last_area }} м²
                 🔋 Заряд: {{ battery }}%
 
                 🗺️ [Карта уборки]({{ full_url }})
               title: ✅ Neatsvor Vacuum
           - action: notify.persistent_notification
             data:
-              message: "{{ message }}"
-              title: "{{ title }}"
-          - action: "{{ mobile_notify_service }}"
+              message: '{{ message }}'
+              title: '{{ title }}'
+          - action: '{{ mobile_notify_service }}'
             data:
-              message: "{{ message }}"
-              title: "{{ title }}"
+              message: '{{ message }}'
+              title: '{{ title }}'
               data:
-                clickAction: "{{ full_url }}"
-                image: "{{ full_url }}"
+                clickAction: '{{ full_url }}'
+                image: '{{ full_url }}'
                 push:
                   sound:
                     name: default
@@ -227,25 +248,25 @@ actions:
                   in trigger.from_state.state.lower() }}
         sequence:
           - variables:
-              battery: "{{ states(vacuum_battery) }}"
+              battery: '{{ states(vacuum_battery) }}'
               message: |-
                 🔋 Пылесос полностью заряжен!
                 Уровень заряда: {{ battery }}%
               title: 🔋 Neatsvor Vacuum
           - action: notify.persistent_notification
             data:
-              message: "{{ message }}"
-              title: "{{ title }}"
-          - action: "{{ mobile_notify_service }}"
+              message: '{{ message }}'
+              title: '{{ title }}'
+          - action: '{{ mobile_notify_service }}'
             data:
-              message: "{{ message }}"
-              title: "{{ title }}"
+              message: '{{ message }}'
+              title: '{{ title }}'
               data:
                 push:
                   sound:
-                    name: "{{ sound_name }}"
-                    critical: "{{ sound_critical }}"
-                    volume: "{{ sound_volume }}"
+                    name: '{{ sound_name }}'
+                    critical: '{{ sound_critical }}'
+                    volume: '{{ sound_volume }}'
 
       # ============================================================
       # 6. ОШИБКА (с картой места остановки)
@@ -265,7 +286,7 @@ actions:
               latest_map: >-
                 {{ state_attr(vacuum_map_data, 'map_path') |
                 replace('/config/www', '/local') }}
-              full_url: "{{ external_url }}{{ latest_map }}"
+              full_url: '{{ external_url }}{{ latest_map }}'
           - delay:
               seconds: 2
           - action: notify.persistent_notification
@@ -275,13 +296,13 @@ actions:
 
                 [📍 Открыть карту]({{ full_url }})
               title: ⚠️ Neatsvor Vacuum
-          - action: "{{ mobile_notify_service }}"
+          - action: '{{ mobile_notify_service }}'
             data:
               message: ⚠️ {{ trigger.to_state.state }}
               title: ⚠️ Neatsvor Vacuum
               data:
-                clickAction: "{{ full_url }}"
-                image: "{{ full_url }}"
+                clickAction: '{{ full_url }}'
+                image: '{{ full_url }}'
                 push:
                   sound:
                     name: alarm.caf
