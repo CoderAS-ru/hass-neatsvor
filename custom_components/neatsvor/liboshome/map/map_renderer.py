@@ -7,8 +7,12 @@ import os
 from pathlib import Path
 import platform
 import logging
+import mdi_pil as mdi
 
-from custom_components.neatsvor.liboshome.map.map_utils import calculate_map_scale
+from custom_components.neatsvor.liboshome.map.map_utils import (
+    calculate_map_scale,
+    extract_room_presets,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -33,6 +37,9 @@ class MapRenderer:
         self._robot_icon = None
         self._charger_icon = None
 
+        # Кэш MDI-иконок пресетов: {"mdi:fan-speed-1": Image, ...}
+        self._preset_icons_cache: Dict[str, Image.Image] = {}
+        
         # Load fonts of different sizes
         self._font_normal = self._load_font(20)      # Main font
         self._font_large = self._load_font(32)       # For headers
@@ -43,7 +50,7 @@ class MapRenderer:
 
         # Log font status
         self._log_font_status()
-
+        
     def _log_font_status(self):
         """Log font loading status."""
         fonts_loaded = []
@@ -116,10 +123,11 @@ class MapRenderer:
         img_height = height * self.multiple
 
         y_offset = 0
+        
         if show_legend and map_data.get('room_names'):
-            # Increase space for legend with large font
             from custom_components.neatsvor.liboshome.map.map_utils import calculate_legend_height
-            legend_height = calculate_legend_height(len(map_data['room_names']))
+            # has_presets=True — резервируем вторую строку под иконки
+            legend_height = calculate_legend_height(len(map_data['room_names']), has_presets=True)
             img_height += legend_height
             y_offset = legend_height
 
@@ -145,9 +153,9 @@ class MapRenderer:
         # Add icons (pass root_window)
         self._draw_icons(image, map_data, y_offset, root_window)
 
-        # Add legend (extra large font)
+        # Add legend (extra large font) — передаём image для иконок пресетов
         if show_legend and map_data.get('room_names'):
-            self._draw_legend(draw, map_data, img_width)
+            self._draw_legend(draw, map_data, img_width, image=image)
 
         # Save if needed
         if output_file:
@@ -325,70 +333,220 @@ class MapRenderer:
 
         return icon
 
-    def _draw_legend(self, draw, map_data: Dict, image_width: int):
+    def _get_preset_icon(self, mdi_name: str, size: int = 24) -> Optional[Image.Image]:
         """
-        Draw legend with room names.
+        Возвращает RGBA-изображение MDI-иконки нужного размера.
+        Использует кэш, чтобы не пересоздавать при каждом рендере.
+        """
+        cache_key = f"{mdi_name}@{size}"
+        if cache_key in self._preset_icons_cache:
+            return self._preset_icons_cache[cache_key]
 
-        Improvements:
-        - Enlarged font (24 for title, 22 for rooms)
-        - Larger spacing between items
-        - Colored background for better readability
-        - Text shadow
+        try:
+            # mdi_pil рисует на квадратном полотне; размер задаётся неявно
+            # (обычно 24x24 у mdi_pil, но проверим на всякий случай)
+            base = Image.new("RGBA", (100, 100), None)
+            base = mdi.draw_mdi_icon(base, mdi_name, icon_color="black")
+
+            # Обрезаем по контенту и ресайзим под нужный size
+            bbox = base.getbbox()
+            if bbox:
+                base = base.crop(bbox)
+
+            # Вписываем в квадрат size×size с сохранением пропорций
+            base.thumbnail((size, size), Image.Resampling.LANCZOS)
+
+            # Создаём финальное полотно size×size и центрируем
+            final = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+            paste_x = (size - base.width) // 2
+            paste_y = (size - base.height) // 2
+            final.paste(base, (paste_x, paste_y), base)
+
+            self._preset_icons_cache[cache_key] = final
+            return final
+
+        except Exception as e:
+            _LOGGER.warning("Failed to draw MDI icon %s: %s", mdi_name, e)
+            return None
+
+    def _draw_legend(self, draw, map_data: Dict, image_width: int,
+                     image: Optional[Image.Image] = None):
+        """
+        Draw legend with room names + presets row.
+
+        Первая строка: цветной квадрат + название комнаты.
+        Вторая строка: иконки пресетов (fan, water, mode, times) под каждой комнатой.
         """
         room_names = map_data.get('room_names', [])
         if not room_names:
             return
 
-        _LOGGER.debug("Adding legend for %s rooms (large font)", len(room_names))
+        _LOGGER.debug("Adding legend for %s rooms (with presets)", len(room_names))
 
-        # Legend parameters (ENLARGED FOR MAXIMUM READABILITY)
-        item_height = 45              # Increased from 35 to 45
-        items_per_row = min(4, len(room_names))  # Up to 4 names per row
-        box_size = 32                 # Increased from 24 to 32
-        margin = 15                   # Increased from 10 to 15
-        text_offset = 12              # Text offset from color box
+        # Параметры первой строки
+        item_height = 45
+        items_per_row = min(4, len(room_names))
+        box_size = 32
+        margin = 15
+        text_offset = 12
 
-        # Semi-transparent background for legend
+        # Параметры второй строки (пресеты)
+        presets_row_height = 35
+
+        # Высота фона легенды
         legend_bg_y1 = 5
         legend_bg_y2 = 50 + ((len(room_names) - 1) // items_per_row + 1) * item_height
+        legend_bg_y2 += presets_row_height  # место под вторую строку
+
         draw.rectangle(
             [margin - 5, legend_bg_y1, image_width - margin + 5, legend_bg_y2],
-            fill=(255, 255, 255, 220),  # Semi-transparent white
+            fill=(255, 255, 255, 220),
             outline=(200, 200, 200)
         )
 
-        # Draw color boxes with room names
+        # Собираем позиции комнат (для второй строки)
+        room_cols = []
+
         for i, room in enumerate(room_names):
             row = i // items_per_row
             col = i % items_per_row
 
-            # Calculate position considering column width
             col_width = image_width // items_per_row
             x = margin + col * col_width
-            y = 45 + row * item_height  # Shifted down for title
+            y = 45 + row * item_height
 
-            # Room color
             color = self._get_room_color(room['id'])
 
-            # Color box (ENLARGED)
+            # Цветной квадрат
             draw.rectangle([x, y, x + box_size, y + box_size],
                           fill=color,
-                          outline=(100, 100, 100),  # Outline for contrast
+                          outline=(100, 100, 100),
                           width=1)
 
-            # Room name (ENLARGED FONT)
-            # First shadow for readability
+            # Название комнаты (с тенью)
             draw.text((x + box_size + text_offset + 1, y + 5 + 1),
                      room['name'],
                      fill=(150, 150, 150),
                      font=self._font_legend or self._font_normal)
-
-            # Main text
             draw.text((x + box_size + text_offset, y + 5),
                      room['name'],
                      fill=(0, 0, 0),
                      font=self._font_legend or self._font_normal)
 
-        # Separator line between legend and map
+            # Центр всей ячейки (квадрат + отступ + текст комнаты)
+            try:
+                text_w = draw.textlength(
+                    room['name'],
+                    font=self._font_legend or self._font_normal,
+                )
+            except Exception:
+                # fallback для старых версий PIL
+                bbox = draw.textbbox(
+                    (0, 0), room['name'],
+                    font=self._font_legend or self._font_normal,
+                )
+                text_w = bbox[2] - bbox[0]
+
+            cell_width = box_size + text_offset + text_w
+            cell_center_x = int(x + cell_width // 2)
+
+            room_cols.append({
+                'id': room['id'],
+                'name': room['name'],
+                'center_x': cell_center_x,
+            })
+
+        # Вторая строка — иконки пресетов
+        if image is not None:
+            # Y для второй строки: сразу под последней строкой первой части
+            rows_used = (len(room_names) - 1) // items_per_row + 1
+            presets_y = int(45 + rows_used * item_height)
+            self._draw_presets_row(image, map_data, room_cols, image_width, presets_y)
+
+        # Разделитель
         draw.line([margin, legend_bg_y2 + 5, image_width - margin, legend_bg_y2 + 5],
                  fill=(200, 200, 200), width=2)
+                 
+    def _draw_presets_row(self, image: Image.Image, map_data: Dict,
+                          room_cols: List[Dict], image_width: int,
+                          y_base: int):
+        """
+        Рисует вторую строку легенды — иконки пресетов под каждой комнатой.
+
+        Args:
+            image: полотно (RGBA или RGB)
+            map_data: декодированная карта
+            room_cols: [{'id': ..., 'name': ..., 'x': ..., 'center_x': ...}, ...]
+            image_width: ширина изображения
+            y_base: верхняя Y-координата для второй строки
+        """
+        presets = extract_room_presets(map_data)
+
+        icon_size = 32
+        gap = 8          # отступ между иконками
+        row_y = y_base
+
+        # Карта: значение → mdi-имя
+        fan_icons = {
+            1: "mdi:fan-speed-1",
+            2: "mdi:fan-speed-2",
+            3: "mdi:fan-speed-3",
+            4: "mdi:fan-plus",
+        }
+        water_icons = {
+            1: "mdi:water-minus",
+            2: "mdi:water",
+            3: "mdi:water-plus",
+        }
+        mode_icons = {
+            0: "mdi:broom",           # sweep
+            1: "mdi:spray",           # mop
+            2: "mdi:vacuum-outline",  # sweepMop
+        }
+        times_icons = {
+            1: "mdi:numeric-1-box-multiple-outline",
+            2: "mdi:numeric-2-box-multiple-outline",
+            3: "mdi:numeric-3-box-multiple-outline",
+        }
+
+        for room in room_cols:
+            room_id = room['id']
+            preset = presets.get(room_id)
+            if not preset:
+                continue
+
+            # Собираем список MDI-имён для этой комнаты
+            icons_to_draw = []
+
+            fan = preset.get('fan')
+            if fan in fan_icons:
+                icons_to_draw.append(fan_icons[fan])
+
+            water = preset.get('water')
+            if water in water_icons:
+                icons_to_draw.append(water_icons[water])
+
+            mode = preset.get('mode')
+            if mode in mode_icons:
+                icons_to_draw.append(mode_icons[mode])
+
+            times = preset.get('times')
+            if times in times_icons:
+                icons_to_draw.append(times_icons[times])
+
+            if not icons_to_draw:
+                continue
+
+            # Общая ширина блока иконок
+            total_width = len(icons_to_draw) * icon_size + (len(icons_to_draw) - 1) * gap
+            start_x = int(room['center_x'] - total_width // 2)
+
+            # Рисуем слева направо
+            for i, mdi_name in enumerate(icons_to_draw):
+                icon_img = self._get_preset_icon(mdi_name, icon_size)
+                if icon_img is None:
+                    continue
+                x = int(start_x + i * (icon_size + gap))
+                y = int(row_y)
+                # image может быть RGB — конвертируем для альфа-композита
+                image.paste(icon_img, (x, y), icon_img)

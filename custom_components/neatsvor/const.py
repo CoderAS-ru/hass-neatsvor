@@ -423,3 +423,8 @@ def get_localized_clean_mode(mode_key: str, language: str = "en") -> str:
         result = CLEAN_MODE_MAP.get(mode_key, mode_key)
     _LOGGER.debug("get_localized_clean_mode result: %s", result)
     return result
+    
+# === DEBUG ===
+# Временный флаг для дампа карт в JSON (для отладки).
+# Используется вместе с MapDebugDumper.
+DEBUG_MAPS = False

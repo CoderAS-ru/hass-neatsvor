@@ -148,6 +148,21 @@ class NeatsvorVacuum:
                 _LOGGER.info("Setting visualizer for clean_history")
                 self.clean_history.set_visualizer(self.visualizer)
                 _LOGGER.info("Visualizer set for clean_history")
+
+                # === DEBUG DUMP cleanup ===
+                # Удаляем старые *_raw.json (старше 24ч) при старте HA.
+                # Работает только при DEBUG_MAPS = True.
+                try:
+                    from custom_components.neatsvor.liboshome.map.map_utils import cleanup_old_debug_dumps
+                    import asyncio
+                    loop = asyncio.get_event_loop()
+                    loop.run_in_executor(
+                        None, cleanup_old_debug_dumps, base_dir, 24
+                    )
+                except Exception as e:
+                    _LOGGER.debug("cleanup_old_debug_dumps failed: %s", e)
+                # === /DEBUG DUMP cleanup ===
+
             else:
                 _LOGGER.warning("clean_history not found in vacuum")
         else:

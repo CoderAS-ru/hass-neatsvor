@@ -132,6 +132,11 @@ class CleanHistoryManager:
         if map_data:
             self.current_map_data = map_data
 
+            # === DEBUG DUMP ===
+            from custom_components.neatsvor.liboshome.map.map_utils import MapDebugDumper
+            await asyncio.to_thread(MapDebugDumper.dump, map_data, "history", str(record.record_id))
+            # === /DEBUG DUMP ===
+
             map_data['clean_info'] = {
                 'record_id': record.record_id,
                 'clean_time': record.clean_time,

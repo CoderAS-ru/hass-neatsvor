@@ -239,7 +239,7 @@ class NeatsvorOptionsFlow(config_entries.OptionsFlow):
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         """Initialize options flow."""
-        self.config_entry = config_entry
+        self._config_entry = config_entry
 
     async def async_step_init(
         self, user_input: Optional[Dict[str, Any]] = None
@@ -250,8 +250,8 @@ class NeatsvorOptionsFlow(config_entries.OptionsFlow):
             code: config["name"] 
             for code, config in APP_CONFIGS.items()
         }
-        current_app = self.config_entry.data.get("app_type", DEFAULT_APP)
-        current_phone_code = self.config_entry.data.get(CONF_PHONE_CODE, DEFAULT_PHONE_CODE)
+        current_app = self._config_entry.data.get("app_type", DEFAULT_APP)
+        current_phone_code = self._config_entry.data.get(CONF_PHONE_CODE, DEFAULT_PHONE_CODE)
 
         if user_input is not None:
             new_phone_code = user_input.get(CONF_PHONE_CODE, current_phone_code)
@@ -265,7 +265,7 @@ class NeatsvorOptionsFlow(config_entries.OptionsFlow):
             )
             
             # Update configuration
-            new_data = dict(self.config_entry.data)
+            new_data = dict(self._config_entry.data)
             new_data[CONF_PHONE_CODE] = new_phone_code
             new_data["app_type"] = new_app_type
             
@@ -280,11 +280,11 @@ class NeatsvorOptionsFlow(config_entries.OptionsFlow):
             new_data.pop("region", None)
 
             self.hass.config_entries.async_update_entry(
-                self.config_entry, data=new_data
+                self._config_entry, data=new_data
             )
 
             # Request reload
-            await self.hass.config_entries.async_reload(self.config_entry.entry_id)
+            await self.hass.config_entries.async_reload(self._config_entry.entry_id)
 
             return self.async_create_entry(title="", data={})
 
@@ -298,7 +298,7 @@ class NeatsvorOptionsFlow(config_entries.OptionsFlow):
             ),
             description_placeholders={
                 "device_name": "Neatsvor Vacuum",
-                "device_mac": self.config_entry.data.get("device_mac", "Unknown"),
-                "email": self.config_entry.data.get(CONF_EMAIL, ""),
+                "device_mac": self._config_entry.data.get("device_mac", "Unknown"),
+                "email": self._config_entry.data.get(CONF_EMAIL, ""),
             }
         )

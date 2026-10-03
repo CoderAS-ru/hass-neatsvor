@@ -31,6 +31,8 @@ from .const import (
     ROBOT_STATUS,
 )
 
+from .liboshome.map.map_utils import extract_room_presets, extract_room_names_map
+
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -580,17 +582,10 @@ class NeatsvorMapSensor(CoordinatorEntity, SensorEntity):
                     'cell_count': len(cells)
                 })
 
-            self._room_presets = {}
-            if 'raw' in map_data and hasattr(map_data['raw'], 'room_info'):
-                raw = map_data['raw']
-                if hasattr(raw.room_info, 'room_attrs'):
-                    for attr in raw.room_info.room_attrs:
-                        self._room_presets[attr.room_id] = {
-                            'fan': attr.fan_level,
-                            'water': attr.tank_level,
-                            'times': attr.clean_times,
-                            'mode': attr.clean_mode
-                        }
+            self._room_presets = extract_room_presets(map_data)
+            _LOGGER.debug(
+                "Room presets (MapSensor): count=%s", len(self._room_presets)
+            )
 
             from custom_components.neatsvor.liboshome.map.map_utils import get_latest_realtime_png
 
@@ -1124,35 +1119,24 @@ class NeatsvorRoomPresetSensor(CoordinatorEntity, SensorEntity):
         try:
             if hasattr(self.coordinator.vacuum, '_map_data') and self.coordinator.vacuum._map_data:
                 map_data = self.coordinator.vacuum._map_data
-                if 'raw' in map_data and hasattr(map_data['raw'], 'room_info'):
-                    raw = map_data['raw']
-                    if hasattr(raw.room_info, 'room_attrs'):
-                        self._presets = {}
-                        self._rooms = []
 
-                        room_names = {r['id']: r['name'] for r in map_data.get('room_names', [])}
+                self._presets = extract_room_presets(map_data)
+                room_names = extract_room_names_map(map_data)
 
-                        for attr in raw.room_info.room_attrs:
-                            room_id = attr.room_id
-                            room_name = room_names.get(room_id, f"Room {room_id}")
+                self._rooms = [
+                    {
+                        'id': room_id,
+                        'name': room_names.get(room_id, f"Room {room_id}"),
+                        'preset': preset,
+                    }
+                    for room_id, preset in self._presets.items()
+                ]
 
-                            preset = {
-                                'fan': attr.fan_level,
-                                'water': attr.tank_level,
-                                'times': attr.clean_times,
-                                'mode': attr.clean_mode
-                            }
-                            self._presets[room_id] = preset
-
-                            self._rooms.append({
-                                'id': room_id,
-                                'name': room_name,
-                                'preset': preset
-                            })
-
-                        self._attr_native_value = f"{len(self._presets)} presets"
-                        _LOGGER.info("Loaded %s presets from raw data", len(self._presets))
-                        self.async_write_ha_state()
+                self._attr_native_value = f"{len(self._presets)} presets"
+                _LOGGER.debug(
+                    "RoomPreset: loaded %s presets", len(self._presets)
+                )
+                self.async_write_ha_state()
 
         except Exception as e:
             _LOGGER.error("Error updating room presets: %s", e, exc_info=True)
@@ -1261,36 +1245,25 @@ class NeatsvorCurrentMapPresetSensor(CoordinatorEntity, SensorEntity):
         try:
             if hasattr(self.coordinator.vacuum, '_map_data') and self.coordinator.vacuum._map_data:
                 map_data = self.coordinator.vacuum._map_data
-                if 'raw' in map_data and hasattr(map_data['raw'], 'room_info'):
-                    raw = map_data['raw']
-                    if hasattr(raw.room_info, 'room_attrs'):
-                        self._presets = {}
-                        self._rooms = []
-                        self._map_time = datetime.now()
 
-                        room_names = {r['id']: r['name'] for r in map_data.get('room_names', [])}
+                self._presets = extract_room_presets(map_data)
+                room_names = extract_room_names_map(map_data)
+                self._map_time = datetime.now()
 
-                        for attr in raw.room_info.room_attrs:
-                            room_id = attr.room_id
-                            room_name = room_names.get(room_id, f"Room {room_id}")
+                self._rooms = [
+                    {
+                        'id': room_id,
+                        'name': room_names.get(room_id, f"Room {room_id}"),
+                        'preset': preset,
+                    }
+                    for room_id, preset in self._presets.items()
+                ]
 
-                            preset = {
-                                'fan': attr.fan_level,
-                                'water': attr.tank_level,
-                                'times': attr.clean_times,
-                                'mode': attr.clean_mode
-                            }
-                            self._presets[room_id] = preset
-
-                            self._rooms.append({
-                                'id': room_id,
-                                'name': room_name,
-                                'preset': preset
-                            })
-
-                        self._attr_native_value = f"{len(self._presets)} presets"
-                        _LOGGER.info("Loaded %s presets from current live map", len(self._presets))
-                        self.async_write_ha_state()
+                self._attr_native_value = f"{len(self._presets)} presets"
+                _LOGGER.debug(
+                    "CurrentMapPreset: loaded %s presets", len(self._presets)
+                )
+                self.async_write_ha_state()
 
         except Exception as e:
             _LOGGER.error("Error updating current map presets: %s", e)
@@ -1497,23 +1470,18 @@ class NeatsvorPresetComparisonSensor(CoordinatorEntity, SensorEntity):
         # Получаем текущие пресеты из _map_data
         if hasattr(self.coordinator.vacuum, '_map_data') and self.coordinator.vacuum._map_data:
             map_data = self.coordinator.vacuum._map_data
-            if 'raw' in map_data and hasattr(map_data['raw'], 'room_info'):
-                raw = map_data['raw']
-                if hasattr(raw.room_info, 'room_attrs'):
-                    room_names = {r['id']: r['name'] for r in map_data.get('room_names', [])}
-                    for attr in raw.room_info.room_attrs:
-                        room_id = attr.room_id
-                        self._current_presets[room_id] = {
-                            'fan': attr.fan_level,
-                            'water': attr.tank_level,
-                            'times': attr.clean_times,
-                            'mode': attr.clean_mode
-                        }
-                        self._current_rooms.append({
-                            'id': room_id,
-                            'name': room_names.get(room_id, f"Room {room_id}"),
-                            'preset': self._current_presets[room_id]
-                        })
+
+            self._current_presets = extract_room_presets(map_data)
+            room_names = extract_room_names_map(map_data)
+
+            self._current_rooms = [
+                {
+                    'id': room_id,
+                    'name': room_names.get(room_id, f"Room {room_id}"),
+                    'preset': preset,
+                }
+                for room_id, preset in self._current_presets.items()
+            ]
 
         if hasattr(self.coordinator, 'cloud_maps_sensor'):
             sensor = self.coordinator.cloud_maps_sensor

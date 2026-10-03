@@ -19,10 +19,14 @@ class MapMessageHandler:
         """Main method: parse payload -> return dict with map."""
         _LOGGER.debug("Processing map, MAC: %s", self.mac)
         try:
-            # Decoding is CPU-heavy (gzip + protobuf + numpy raster).
-            # Run in executor to avoid blocking the HA event loop.
             result = await asyncio.to_thread(self.decoder.decode_mqtt_map, payload)
             _LOGGER.info("Successfully decoded map: %sx%s", result.get('width', 0), result.get('height', 0))
+
+            # === DEBUG DUMP ===
+            from custom_components.neatsvor.liboshome.map.map_utils import MapDebugDumper
+            await asyncio.to_thread(MapDebugDumper.dump, result, "realtime", "live")
+            # === /DEBUG DUMP ===
+
             return result
         except Exception as e:
             _LOGGER.error("Error decoding map: %s", e)

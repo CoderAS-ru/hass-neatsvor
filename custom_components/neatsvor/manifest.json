@@ -17,7 +17,8 @@
     "numpy>=1.21.0",
     "aiofiles>=22.0.0",
     "aiomqtt>=2.0.0",
-    "paho-mqtt>=1.6.0"
+    "paho-mqtt>=1.6.0",
+    "mdi-pil>=1.1.7"
   ],
   "version": "2.1.2"
 }

@@ -11,6 +11,7 @@ from dataclasses import dataclass
 
 from custom_components.neatsvor.liboshome.map.map_decoder import MapDecoder
 from custom_components.neatsvor.liboshome.map.map_renderer import MapRenderer
+from custom_components.neatsvor.liboshome.map.map_utils import extract_room_presets
 from .map_cache import get_map_cache
 
 _LOGGER = logging.getLogger(__name__)
@@ -205,6 +206,12 @@ class CloudMapManager:
             _LOGGER.info("Generating PNG from existing BV for map %s", map_info.device_map_id)
             map_data = await self._decode_bv_file(bv_path)
             if map_data:
+
+                # === DEBUG DUMP ===
+                from custom_components.neatsvor.liboshome.map.map_utils import MapDebugDumper
+                await asyncio.to_thread(MapDebugDumper.dump, map_data, "cloud", str(map_info.device_map_id))
+                # === /DEBUG DUMP ===
+
                 await self._render_png(map_data, map_info)
                 
                 # Extract and save metadata
@@ -249,6 +256,11 @@ class CloudMapManager:
                 _LOGGER.error("Failed to decode map")
                 return None
 
+            # === DEBUG DUMP ===
+            from custom_components.neatsvor.liboshome.map.map_utils import MapDebugDumper
+            await asyncio.to_thread(MapDebugDumper.dump, map_data, "cloud", str(map_info.device_map_id))
+            # === /DEBUG DUMP ===
+
             # Extract room information
             rooms_info = self._extract_rooms_info(map_data)
             room_count = len(rooms_info)
@@ -289,17 +301,19 @@ class CloudMapManager:
             return None
 
     def _extract_rooms_info(self, map_data: Dict) -> List[Dict]:
-        """Extract room information from decoded map data."""
+        """Extract room information from decoded map data (с пресетами)."""
         rooms = []
         room_names = map_data.get('room_names', [])
-        
+        presets = extract_room_presets(map_data)  # ← {room_id: {fan, water, times, mode}}
+
         if room_names:
             for room in room_names:
                 room_id = room.get('id')
                 room_name = room.get('name')
                 rooms.append({
                     'id': room_id,
-                    'name': room_name if room_name else f"Room {room_id}"
+                    'name': room_name if room_name else f"Room {room_id}",
+                    'preset': presets.get(room_id, {}),   # ← ДОБАВЛЕНО
                 })
         else:
             # Fallback to rooms dict
@@ -307,11 +321,12 @@ class CloudMapManager:
             for room_id in rooms_dict.keys():
                 rooms.append({
                     'id': room_id,
-                    'name': f"Room {room_id}"
+                    'name': f"Room {room_id}",
+                    'preset': presets.get(room_id, {}),   # ← ДОБАВЛЕНО
                 })
 
         rooms.sort(key=lambda x: x['id'])
-        _LOGGER.info("Extracted %s rooms from map data", len(rooms))
+        _LOGGER.info("Extracted %s rooms from map data (with presets)", len(rooms))
         return rooms
 
     async def _download_bv_file(self, map_info: CloudMapInfo) -> Optional[bytes]:
