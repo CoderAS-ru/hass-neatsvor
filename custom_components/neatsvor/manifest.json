@@ -20,5 +20,5 @@
     "paho-mqtt>=1.6.0",
     "mdi-pil>=1.1.7"
   ],
-  "version": "2.1.2"
+  "version": "2.2.0"
 }
