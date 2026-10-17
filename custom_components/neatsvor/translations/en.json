@@ -80,7 +80,7 @@
         "state": {
           "sweep": "Sweep only",
           "mop": "Mop only",
-          "sweepMop": "Sweep and mop"
+          "sweep_mop": "Sweep and mop"
         }
       },
       "filter": {
