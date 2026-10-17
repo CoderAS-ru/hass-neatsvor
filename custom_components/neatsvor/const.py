@@ -229,14 +229,14 @@ WATER_LEVEL_MAP_RU = {
 CLEAN_MODE_MAP = {
     "sweep": "Sweep only",
     "mop": "Mop only",
-    "sweepmop": "Sweep and mop"
+    "sweepMop": "Sweep and mop"
 }
 
 # Clean modes (Russian)
 CLEAN_MODE_MAP_RU = {
     "sweep": "Только подмести",
     "mop": "Только мыть",
-    "sweepmop": "Подмести и вымыть"
+    "sweepMop": "Подмести и вымыть"
 }
 
 # Consumables keys
