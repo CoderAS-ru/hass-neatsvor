@@ -123,6 +123,14 @@ class NeatsvorVacuum:
 
         self._initialized = False
         self._connected = False
+        
+        # WatchDog (ping-подход)
+        self._ping_failures: int = 0
+        self._last_ping_at: Optional[datetime] = None
+        self._last_ping_ok_at: Optional[datetime] = None
+        self._reconnect_in_progress = False
+        self._last_reconnect_at: Optional[datetime] = None
+        self._reconnect_count: int = 0
 
     # ------------------------------------------------------------------
     # Initialization and connection
@@ -154,7 +162,6 @@ class NeatsvorVacuum:
                 # Работает только при DEBUG_MAPS = True.
                 try:
                     from custom_components.neatsvor.liboshome.map.map_utils import cleanup_old_debug_dumps
-                    import asyncio
                     loop = asyncio.get_event_loop()
                     loop.run_in_executor(
                         None, cleanup_old_debug_dumps, base_dir, 24
@@ -990,12 +997,6 @@ class NeatsvorVacuum:
                 }
                 _LOGGER.info("Robot status: %s (DP5=%s)", status_map.get(value, f"Unknown({value})"), value)
                 
-            # On DP 15 value="sweepMop" map new value for translation
-            if dp_id == 15:
-                # Нормализуем значение для перевода
-                if value == "sweepMop":
-                    value = "sweep_mop"
-            
             # Update state
             self.state.sensors.update_from_dp(dp_id, value, self.dp_manager)
             self.state.update_dp(dp_id, value)
@@ -1345,6 +1346,127 @@ class NeatsvorVacuum:
     def mac(self) -> str:
         """MAC address."""
         return self.info.mac if self.info else ""
+
+    # ------------------------------------------------------------------
+    # WatchDog
+    # ------------------------------------------------------------------
+
+    @property
+    def last_message_at(self) -> Optional[datetime]:
+        """Время последнего MQTT-сообщения (None, если ещё не было)."""
+        if not self.mqtt:
+            return None
+        ts = self.mqtt.last_message_at
+        if ts is None:
+            return None
+        return datetime.fromtimestamp(ts)
+
+    @property
+    def message_count(self) -> int:
+        """Сколько сообщений получено от MQTT за всё время."""
+        if not self.mqtt:
+            return 0
+        return self.mqtt.message_count
+
+    @property
+    def reconnect_count(self) -> int:
+        """Сколько раз WatchDog переподключался."""
+        return self._reconnect_count
+
+    @property
+    def last_reconnect_at(self) -> Optional[datetime]:
+        """Время последнего reconnect от WatchDog."""
+        return self._last_reconnect_at
+
+    @property
+    def reconnect_in_progress(self) -> bool:
+        """Идёт ли сейчас переподключение."""
+        return self._reconnect_in_progress
+
+    async def reconnect(self) -> bool:
+        """Полный reconnect MQTT + REST."""
+        if self._reconnect_in_progress:
+            _LOGGER.debug("WatchDog: reconnect already in progress, skip")
+            return False
+
+        self._reconnect_in_progress = True
+        self._reconnect_count += 1
+        self._last_reconnect_at = datetime.now()
+
+        try:
+            _LOGGER.warning(
+                "WatchDog: full reconnect (attempt %s)",
+                self._reconnect_count,
+            )
+
+            try:
+                await asyncio.wait_for(self.disconnect(), timeout=30.0)
+            except asyncio.TimeoutError:
+                _LOGGER.error("WatchDog: disconnect() timed out, forcing continue")
+                self._connected = False
+                self._initialized = False
+                self.mqtt = None
+                self.router = None
+                self._command_sender = None
+                self._encoder = None
+                self.rest = None
+
+            await asyncio.sleep(2)
+
+            try:
+                await asyncio.wait_for(self.initialize(), timeout=60.0)
+            except asyncio.TimeoutError:
+                _LOGGER.error("WatchDog: initialize() timed out")
+                return False
+
+            # Сбрасываем счётчики после успешного reconnect
+            self._ping_failures = 0
+            self._last_ping_ok_at = datetime.now()
+
+            _LOGGER.warning("WatchDog: reconnect successful")
+            return True
+        except Exception as e:
+            _LOGGER.error("WatchDog: reconnect failed: %s", e, exc_info=True)
+            return False
+        finally:
+            self._reconnect_in_progress = False
+            
+    async def ping(self, timeout: float = 15.0) -> bool:
+        """
+        Проверка живости MQTT: отправляет request_data([8]) (battery)
+        и ждёт, пока обновится battery (или придёт любое DP-сообщение).
+
+        Returns:
+            True — связь жива, False — нет.
+        """
+        if not self._connected or not self._command_sender:
+            _LOGGER.debug("WatchDog: ping skipped (not connected)")
+            return False
+
+        self._last_ping_at = datetime.now()
+
+        # Запоминаем текущее время последнего сообщения
+        before = self.last_message_at
+
+        try:
+            await self.request_data([8])
+        except Exception as e:
+            _LOGGER.debug("WatchDog: ping send error: %s", e)
+            return False
+
+        # Ждём, пока придёт ЛЮБОЕ сообщение (battery или другое)
+        deadline = datetime.now().timestamp() + timeout
+        while datetime.now().timestamp() < deadline:
+            await asyncio.sleep(1)
+            current = self.last_message_at
+            if current is not None and (before is None or current > before):
+                self._last_ping_ok_at = datetime.now()
+                _LOGGER.debug("WatchDog: ping OK (reply in %.1fs)", 
+                            (datetime.now() - self._last_ping_at).total_seconds())
+                return True
+
+        _LOGGER.warning("WatchDog: ping timeout after %.0fs", timeout)
+        return False
 
     # ------------------------------------------------------------------
     # Callbacks

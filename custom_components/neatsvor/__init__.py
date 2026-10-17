@@ -7,6 +7,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall
 from pathlib import Path
+from datetime import datetime
 
 from .const import (
     DOMAIN, 
@@ -239,6 +240,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         'config': config,
     }
     hass.data[DOMAIN][entry.entry_id] = entry_data
+    
+    # === WatchDog ===
+    watchdog_task = asyncio.create_task(
+        _watchdog_loop(hass, entry, vacuum),
+        name=f"neatsvor_watchdog_{entry.entry_id}",
+    )
+    entry_data['watchdog_task'] = watchdog_task
+    _LOGGER.info("WatchDog started for entry %s", entry.entry_id)
+    # === /WatchDog ===
 
     await coordinator.async_config_entry_first_refresh()
 
@@ -848,6 +858,17 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if unload_ok and entry.entry_id in hass.data.get(DOMAIN, {}):
         entry_data = hass.data[DOMAIN][entry.entry_id]
         
+        # === WatchDog: остановка ПЕРЕД disconnect ===
+        watchdog_task = entry_data.get('watchdog_task')
+        if watchdog_task and not watchdog_task.done():
+            watchdog_task.cancel()
+            try:
+                await watchdog_task
+            except asyncio.CancelledError:
+                pass
+            _LOGGER.info("WatchDog stopped for entry %s", entry.entry_id)
+        # === /WatchDog ===
+        
         if 'vacuum' in entry_data:
             try:
                 await entry_data['vacuum'].disconnect()
@@ -882,3 +903,92 @@ async def _async_close_all_vacuums(hass):
                 _LOGGER.info("Vacuum closed for entry %s", entry_id)
             except Exception as e:
                 _LOGGER.error("Error closing vacuum: %s", e)
+                
+async def _watchdog_loop(hass: HomeAssistant, entry: ConfigEntry, vacuum) -> None:
+    """
+    WatchDog: пингует робота и реконнектит при отсутствии ответа.
+
+    Логика:
+    - каждые WATCHDOG_INTERVAL сек — ping
+    - если ping неудачный — счётчик +1
+    - если WATCHDOG_MAX_FAILURES подряд — reconnect
+    - после reconnect — cooldown, счётчик сбрасывается
+    """
+    from .const import (
+        WATCHDOG_INTERVAL,
+        WATCHDOG_PING_TIMEOUT,
+        WATCHDOG_MAX_FAILURES,
+        WATCHDOG_RECONNECT_COOLDOWN,
+    )
+
+    _LOGGER.info("WatchDog loop started (ping-based)")
+
+    await asyncio.sleep(30)  # даём интеграции стартовать
+
+    while True:
+        try:
+            await asyncio.sleep(WATCHDOG_INTERVAL)
+
+            if not vacuum or not vacuum.is_initialized:
+                continue
+
+            if vacuum.reconnect_in_progress:
+                _LOGGER.debug("WatchDog: reconnect in progress, skip ping")
+                continue
+
+            # Пропускаем ping, если недавно был reconnect (cooldown)
+            if vacuum.last_reconnect_at:
+                since = (datetime.now() - vacuum.last_reconnect_at).total_seconds()
+                if since < WATCHDOG_RECONNECT_COOLDOWN:
+                    _LOGGER.debug(
+                        "WatchDog: cooldown (%.0fs < %ss), skip ping",
+                        since, WATCHDOG_RECONNECT_COOLDOWN,
+                    )
+                    continue
+
+            # Пингуем
+            ok = await vacuum.ping(timeout=WATCHDOG_PING_TIMEOUT)
+
+            if ok:
+                if vacuum._ping_failures > 0:
+                    _LOGGER.info(
+                        "WatchDog: ping OK, reset failures (was %s)",
+                        vacuum._ping_failures,
+                    )
+                vacuum._ping_failures = 0
+                continue
+
+            # Ping failed
+            vacuum._ping_failures += 1
+            _LOGGER.warning(
+                "WatchDog: ping failed (%s/%s)",
+                vacuum._ping_failures, WATCHDOG_MAX_FAILURES,
+            )
+
+            if vacuum._ping_failures < WATCHDOG_MAX_FAILURES:
+                continue
+
+            # Порог достигнут — reconnect
+            _LOGGER.error(
+                "WatchDog: %s ping failures in a row, reconnecting...",
+                vacuum._ping_failures,
+            )
+            success = await vacuum.reconnect()
+
+            if success:
+                vacuum._ping_failures = 0
+                _LOGGER.warning("WatchDog: reconnect completed")
+                try:
+                    coordinator = hass.data[DOMAIN][entry.entry_id]['coordinator']
+                    await coordinator.async_request_refresh()
+                except Exception as e:
+                    _LOGGER.debug("WatchDog: coordinator refresh failed: %s", e)
+            else:
+                _LOGGER.error("WatchDog: reconnect failed, will retry after cooldown")
+
+        except asyncio.CancelledError:
+            _LOGGER.info("WatchDog loop cancelled")
+            raise
+        except Exception as e:
+            _LOGGER.error("WatchDog loop error: %s", e, exc_info=True)
+            await asyncio.sleep(WATCHDOG_INTERVAL)

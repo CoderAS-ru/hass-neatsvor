@@ -5,6 +5,7 @@ Optimized for Windows.
 
 import asyncio
 import logging
+import time
 from typing import List, Callable, Awaitable, Optional
 
 import aiomqtt
@@ -30,8 +31,13 @@ class AsyncMQTTClient:
         self._client: Optional[aiomqtt.Client] = None
         self._listening_task: Optional[asyncio.Task] = None
         self._handlers: List[Callable] = []
+        
         self._connected = False
         self._should_run = True
+
+        # WatchDog: время последнего полученного сообщения
+        self._last_message_at: Optional[float] = None
+        self._message_count: int = 0
 
     async def connect(self) -> None:
         """Connect to MQTT broker."""
@@ -98,7 +104,6 @@ class AsyncMQTTClient:
         _LOGGER.info("MQTT client disconnected")
 
     async def _listen(self) -> None:
-        """Listener for incoming messages."""
         _LOGGER.info("MQTT listener started")
 
         try:
@@ -106,12 +111,15 @@ class AsyncMQTTClient:
                 if not self._should_run:
                     break
 
-                # Log only important topics for debugging
+                # === WatchDog: фиксируем любое сообщение ===
+                self._last_message_at = time.time()
+                self._message_count += 1
+                # ==========================================
+
                 topic_str = str(message.topic)
                 if topic_str.startswith(("MAP_", "STATE_", "DP_DEV_")):
                     _LOGGER.debug("Received: %s (%s bytes)", message.topic, len(message.payload))
 
-                # Pass message to all handlers
                 for handler in self._handlers:
                     try:
                         if asyncio.iscoroutinefunction(handler):
@@ -166,3 +174,13 @@ class AsyncMQTTClient:
     def is_connected(self) -> bool:
         """Check connection status."""
         return self._connected
+        
+    @property
+    def last_message_at(self) -> Optional[float]:
+        """Timestamp (UNIX) последнего полученного сообщения."""
+        return self._last_message_at
+
+    @property
+    def message_count(self) -> int:
+        """Общее количество полученных сообщений."""
+        return self._message_count

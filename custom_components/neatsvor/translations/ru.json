@@ -80,7 +80,7 @@
         "state": {
           "sweep": "Только подмести",
           "mop": "Только мыть",
-          "sweep_mop": "Подмести и вымыть"
+          "sweepMop": "Подмести и вымыть"
         }
       },
       "filter": {
@@ -151,6 +151,9 @@
 	  }
     },
     "binary_sensor": {
+      "mqtt_connected": {
+        "name": "MQTT-соединение"
+      },
       "online": {
         "name": "Онлайн"
       },

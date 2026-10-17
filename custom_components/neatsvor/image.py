@@ -58,10 +58,7 @@ class NeatsvorCloudMapImage(ImageEntity, CoordinatorEntity):
         await super().async_added_to_hass()
         _LOGGER.debug("CloudMapImage added to hass")
 
-        self.async_on_remove(
-            self.coordinator.async_add_listener(self._handle_coordinator_update)
-        )
-
+        # CoordinatorEntity уже подписан на coordinator — ручная подписка даёт дубль.
         asyncio.create_task(self._wait_for_cloud_maps())
 
     async def _wait_for_cloud_maps(self):

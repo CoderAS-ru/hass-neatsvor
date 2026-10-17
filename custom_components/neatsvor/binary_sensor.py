@@ -11,6 +11,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from datetime import datetime
+
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
@@ -26,6 +28,7 @@ async def async_setup_entry(
 
     entities = [
         NeatsvorOnlineSensor(coordinator),
+        NeatsvorMqttConnectedSensor(coordinator),
         NeatsvorChargingSensor(coordinator),
         NeatsvorDustBinFullSensor(coordinator),
     ]
@@ -123,3 +126,58 @@ class NeatsvorDustBinFullSensor(CoordinatorEntity, BinarySensorEntity):
     def available(self) -> bool:
         """Return true if data available."""
         return self.coordinator.data is not None
+        
+class NeatsvorMqttConnectedSensor(CoordinatorEntity, BinarySensorEntity):
+    _attr_has_entity_name = True
+    _attr_translation_key = "mqtt_connected"
+    _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
+    _attr_icon = "mdi:lan-connect"
+
+    def __init__(self, coordinator):
+        super().__init__(coordinator)
+        device_id = coordinator.device_id
+        self._attr_unique_id = f"neatsvor_{device_id}_mqtt_connected"
+        self._attr_device_info = coordinator.device_info
+
+    @property
+    def is_on(self) -> bool:
+        """True, если последний ping был успешным (или ещё не было ping)."""
+        vacuum = self.coordinator.vacuum
+        if not vacuum:
+            return False
+        if vacuum._last_ping_ok_at is None and vacuum._ping_failures == 0:
+            return True
+        return vacuum._ping_failures == 0
+
+    @property
+    def available(self) -> bool:
+        return True
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        vacuum = self.coordinator.vacuum
+        if not vacuum:
+            return {}
+
+        return {
+            "last_message_at": (
+                vacuum.last_message_at.isoformat()
+                if vacuum.last_message_at else None
+            ),
+            "last_ping_at": (
+                vacuum._last_ping_at.isoformat()
+                if vacuum._last_ping_at else None
+            ),
+            "last_ping_ok_at": (
+                vacuum._last_ping_ok_at.isoformat()
+                if vacuum._last_ping_ok_at else None
+            ),
+            "ping_failures": vacuum._ping_failures,
+            "message_count": vacuum.message_count,
+            "reconnect_count": vacuum.reconnect_count,
+            "last_reconnect_at": (
+                vacuum.last_reconnect_at.isoformat()
+                if vacuum.last_reconnect_at else None
+            ),
+            "reconnect_in_progress": vacuum.reconnect_in_progress,
+        }

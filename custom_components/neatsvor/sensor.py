@@ -543,10 +543,6 @@ class NeatsvorMapSensor(CoordinatorEntity, SensorEntity):
         """When entity is added to hass."""
         await super().async_added_to_hass()
 
-        self.async_on_remove(
-            self.coordinator.async_add_listener(self._handle_coordinator_update)
-        )
-
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from coordinator."""
         self.async_write_ha_state()
@@ -699,10 +695,6 @@ class NeatsvorCloudMapsSensor(CoordinatorEntity, SensorEntity):
         """When entity is added to hass."""
         await super().async_added_to_hass()
         _LOGGER.debug("CloudMapsSensor added to hass")
-
-        self.async_on_remove(
-            self.coordinator.async_add_listener(self._handle_coordinator_update)
-        )
 
         await self.async_update()
 
@@ -1102,9 +1094,6 @@ class NeatsvorRoomPresetSensor(CoordinatorEntity, SensorEntity):
     async def async_added_to_hass(self) -> None:
         """When entity is added to hass."""
         await super().async_added_to_hass()
-        self.async_on_remove(
-            self.coordinator.async_add_listener(self._handle_coordinator_update)
-        )
         await self._update_presets()
 
     def _handle_coordinator_update(self) -> None:
@@ -1228,9 +1217,6 @@ class NeatsvorCurrentMapPresetSensor(CoordinatorEntity, SensorEntity):
     async def async_added_to_hass(self) -> None:
         """When entity is added to hass."""
         await super().async_added_to_hass()
-        self.async_on_remove(
-            self.coordinator.async_add_listener(self._handle_coordinator_update)
-        )
         await self._update_presets()
 
     def _handle_coordinator_update(self) -> None:
@@ -1325,9 +1311,6 @@ class NeatsvorCloudMapPresetSensor(CoordinatorEntity, SensorEntity):
     async def async_added_to_hass(self) -> None:
         """When entity is added to hass."""
         await super().async_added_to_hass()
-        self.async_on_remove(
-            self.coordinator.async_add_listener(self._handle_coordinator_update)
-        )
         await self._update_presets()
 
     def _handle_coordinator_update(self) -> None:
@@ -1450,9 +1433,6 @@ class NeatsvorPresetComparisonSensor(CoordinatorEntity, SensorEntity):
     async def async_added_to_hass(self) -> None:
         """When entity is added to hass."""
         await super().async_added_to_hass()
-        self.async_on_remove(
-            self.coordinator.async_add_listener(self._handle_coordinator_update)
-        )
         await self._update_comparison()
 
     def _handle_coordinator_update(self) -> None:
@@ -1618,9 +1598,9 @@ class NeatsvorCleanHistorySensor(CoordinatorEntity, SensorEntity):
     async def async_added_to_hass(self) -> None:
         """When entity is added to hass."""
         await super().async_added_to_hass()
-        self.async_on_remove(
-            self.coordinator.async_add_listener(self._handle_coordinator_update)
-        )
+        # CoordinatorEntity уже подписан на coordinator — ручная подписка даёт дубль.
+        # Логика _handle_coordinator_update (finished_transition / new_finished_record)
+        # теперь вызывается ровно один раз за цикл — без гонки авто-выбора карты.
         await self._load_history()
 
     def _handle_coordinator_update(self) -> None:

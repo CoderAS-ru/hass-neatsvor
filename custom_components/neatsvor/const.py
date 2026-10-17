@@ -229,14 +229,14 @@ WATER_LEVEL_MAP_RU = {
 CLEAN_MODE_MAP = {
     "sweep": "Sweep only",
     "mop": "Mop only",
-    "sweep_mop": "Sweep and mop"
+    "sweepmop": "Sweep and mop"
 }
 
 # Clean modes (Russian)
 CLEAN_MODE_MAP_RU = {
     "sweep": "Только подмести",
     "mop": "Только мыть",
-    "sweep_mop": "Подмести и вымыть"
+    "sweepmop": "Подмести и вымыть"
 }
 
 # Consumables keys
@@ -428,3 +428,9 @@ def get_localized_clean_mode(mode_key: str, language: str = "en") -> str:
 # Временный флаг для дампа карт в JSON (для отладки).
 # Используется вместе с MapDebugDumper.
 DEBUG_MAPS = False
+
+# === WatchDog (ping-based) ===
+WATCHDOG_INTERVAL = 60              # сек, как часто пингуем
+WATCHDOG_PING_TIMEOUT = 15          # сек, сколько ждём ответа на ping
+WATCHDOG_MAX_FAILURES = 3           # сколько неудачных ping подряд -> reconnect
+WATCHDOG_RECONNECT_COOLDOWN = 600   # сек, минимальный интервал между reconnect (10 мин)

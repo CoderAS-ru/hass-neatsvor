@@ -80,7 +80,7 @@
         "state": {
           "sweep": "Sweep only",
           "mop": "Mop only",
-          "sweep_mop": "Sweep and mop"
+          "sweepMop": "Sweep and mop"
         }
       },
       "filter": {
@@ -151,6 +151,9 @@
 	  }
     },
     "binary_sensor": {
+      "mqtt_connected": {
+        "name": "MQTT Connection"
+      },
       "online": {
         "name": "Online"
       },

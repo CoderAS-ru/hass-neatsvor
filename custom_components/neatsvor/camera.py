@@ -204,10 +204,7 @@ class NeatsvorCloudMapCamera(CoordinatorEntity, Camera):
             self._pending_image = None
             self._pending_map_id = None
 
-        self.async_on_remove(
-            self.coordinator.async_add_listener(self._handle_coordinator_update)
-        )
-
+        # CoordinatorEntity уже подписан на coordinator — ручная подписка даёт дубль.
         self.hass.async_create_task(self._wait_for_cloud_maps())
 
     async def _wait_for_cloud_maps(self):

@@ -113,32 +113,21 @@ async def _async_setup_selects_later(coordinator, async_add_entities):
     mode_dp = dp_manager.get_by_code('clean_mode')
     if mode_dp and mode_dp.enum:
         raw_options = list(mode_dp.enum.values())
-        display_options = []
-        for opt in raw_options:
-            if opt == "sweepMop":
-                display_options.append("sweep_mop")
-            else:
-                display_options.append(opt)
-        
-        value_map = {}
-        for dp_id, raw_value in mode_dp.enum.items():
-            normalized = "sweep_mop" if raw_value == "sweepMop" else raw_value
-            value_map[normalized] = dp_id
-        
-        _LOGGER.debug("Clean mode - raw: %s, display: %s, map: %s", 
-                      raw_options, display_options, value_map)
-        
+        value_map = {raw: dp_id for dp_id, raw in mode_dp.enum.items()}
+
+        _LOGGER.debug("Clean mode - options: %s, map: %s", raw_options, value_map)
+
         new_entities.append(NeatsvorEnumSelect(
             coordinator,
             dp_id=mode_dp.id,
             translation_key="clean_mode",
             icon="mdi:broom",
-            options=display_options,
+            options=raw_options,
             value_map=value_map,
             localize_func=get_localized_clean_mode,
             device_id=device_id,
         ))
-        _LOGGER.info("Added clean mode (DP %s): %s", mode_dp.id, display_options)
+        _LOGGER.info("Added clean mode (DP %s): %s", mode_dp.id, raw_options)
 
     # Room selection
     room_clean_dp = dp_manager.get_by_code('room_clean')
@@ -707,9 +696,7 @@ class NeatsvorCleanHistorySelect(CoordinatorEntity, SelectEntity):
     async def async_added_to_hass(self) -> None:
         """When entity is added to hass."""
         await super().async_added_to_hass()
-        self.async_on_remove(
-            self.coordinator.async_add_listener(self._handle_coordinator_update)
-        )
+        # CoordinatorEntity уже подписан на coordinator — ручная подписка даёт дубль.
         await asyncio.sleep(2)
         await self.async_update()
 

@@ -1,4 +1,4 @@
 \"\"\"Version information for Neatsvor integration.\"\"\"
 
-__version__ = "2.2.0"
-__release_date__ = "2026-10-03"
+__version__ = "2.2.1"
+__release_date__ = "2026-10-17"
