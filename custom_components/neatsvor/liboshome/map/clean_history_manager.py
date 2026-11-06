@@ -89,8 +89,15 @@ class CleanHistoryManager:
             except NeatsvorRestError as e:
                 last_error = e
                 error_str = str(e)
-                if "50000" in error_str or "System error" in error_str or "temporary" in error_str.lower():
-                    _LOGGER.warning("Server error (attempt %s/%s): %s", attempt + 1, retry_count, e)
+                # Сетевые/DNS ошибки и временные ошибки сервера — retry с backoff.
+                # Всё остальное — сразу raise.
+                retryable = any(k in error_str for k in (
+                    "50000", "System error", "temporary",
+                    "DNS", "Timeout", "getaddrinfo",
+                    "Cannot connect to host", "Connect call failed",
+                ))
+                if retryable:
+                    _LOGGER.warning("Retryable error (attempt %s/%s): %s", attempt + 1, retry_count, e)
                     if attempt < retry_count - 1:
                         await asyncio.sleep(2 ** attempt)  # Exponential backoff: 1, 2, 4 sec
                         continue
@@ -106,7 +113,7 @@ class CleanHistoryManager:
                     continue
                 raise
         
-        _LOGGER.error("Failed to load history after %s attempts: %s", retry_count, last_error)
+        _LOGGER.warning("Failed to load history after %s attempts: %s", retry_count, last_error)
         return []  # Return empty list on persistent failure
 
     async def load_clean_record_map(self, record: CleanRecordInfo) -> Optional[Dict]:

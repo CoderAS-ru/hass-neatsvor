@@ -107,6 +107,21 @@ class CloudMapManager:
             return cloud_maps
 
         except Exception as e:
+            error_str = str(e)
+            # При сетевой/DNS ошибке возвращаем последний успешный кэш,
+            # чтобы UI не мигал «0 карт». ERROR не логируем — это transient.
+            if any(k in error_str for k in (
+                "DNS", "Timeout", "getaddrinfo",
+                "Cannot connect to host", "Connect call failed",
+            )):
+                if self._maps_cache:
+                    _LOGGER.warning(
+                        "Network error getting cloud maps, using cached %s maps: %s",
+                        len(self._maps_cache), e,
+                    )
+                    return self._maps_cache
+                _LOGGER.warning("Network error getting cloud maps (no cache): %s", e)
+                return []
             _LOGGER.error("Error getting cloud maps: %s", e, exc_info=True)
             return []
 
