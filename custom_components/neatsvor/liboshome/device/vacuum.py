@@ -1439,8 +1439,14 @@ class NeatsvorVacuum:
         Returns:
             True — связь жива, False — нет.
         """
+        # Проверяем и внутренний флаг, и реальное состояние MQTT-клиента.
+        # Иначе при «полу-мёртвом» клиенте (TCP отвалился, а _connected ещё True)
+        # publish() кинет [code:4] в ERROR-лог.
         if not self._connected or not self._command_sender:
             _LOGGER.debug("WatchDog: ping skipped (not connected)")
+            return False
+        if self.mqtt is None or not self.mqtt.is_connected:
+            _LOGGER.debug("WatchDog: ping skipped (mqtt client not connected)")
             return False
 
         self._last_ping_at = datetime.now()
@@ -1451,7 +1457,12 @@ class NeatsvorVacuum:
         try:
             await self.request_data([8])
         except Exception as e:
-            _LOGGER.debug("WatchDog: ping send error: %s", e)
+            # code:4 «not connected» — штатная ситуация при обрыве, не ERROR.
+            err_str = str(e)
+            if "code:4" in err_str or "not currently connected" in err_str:
+                _LOGGER.debug("WatchDog: ping skipped (mqtt not connected): %s", e)
+            else:
+                _LOGGER.debug("WatchDog: ping send error: %s", e)
             return False
 
         # Ждём, пока придёт ЛЮБОЕ сообщение (battery или другое)
