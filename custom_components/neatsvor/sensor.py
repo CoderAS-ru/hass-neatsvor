@@ -721,6 +721,10 @@ class NeatsvorCloudMapsSensor(CoordinatorEntity, SensorEntity):
             _LOGGER.error("Vacuum not initialized")
             return
 
+        if not self.coordinator.vacuum.rest:
+            _LOGGER.debug("REST not ready, skipping cloud maps update")
+            return
+
         if not hasattr(self.coordinator.vacuum, 'cloud_maps'):
             _LOGGER.error("Vacuum has no cloud_maps attribute")
             return
@@ -1657,6 +1661,10 @@ class NeatsvorCleanHistorySensor(CoordinatorEntity, SensorEntity):
             return
 
         if not self.coordinator or not self.coordinator.vacuum:
+            return
+
+        if not self.coordinator.vacuum.rest:
+            _LOGGER.debug("REST not ready, skipping history update")
             return
 
         if not hasattr(self.coordinator.vacuum, 'clean_history'):

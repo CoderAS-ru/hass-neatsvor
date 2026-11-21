@@ -6,7 +6,10 @@ from typing import Dict, List, Optional
 from dataclasses import dataclass
 from pathlib import Path
 
-from custom_components.neatsvor.liboshome.rest.async_client import NeatsvorRestError
+from custom_components.neatsvor.liboshome.rest.async_client import (
+    NeatsvorRestError,
+    NeatsvorSessionClosed,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -85,6 +88,10 @@ class CleanHistoryManager:
                 
                 _LOGGER.info("Loaded %s history records", len(records))
                 return records
+
+            except NeatsvorSessionClosed:
+                # Сессия закрыта — не ретраим, пробрасываем наверх
+                raise
                 
             except NeatsvorRestError as e:
                 last_error = e

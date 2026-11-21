@@ -39,6 +39,9 @@ class AsyncMQTTClient:
         self._last_message_at: Optional[float] = None
         self._message_count: int = 0
 
+        # Callback при неожиданном разрыве (вызывает vacuum)
+        self._on_disconnect: Optional[Callable[[], Awaitable[None]]] = None
+
     async def connect(self) -> None:
         """Connect to MQTT broker."""
         _LOGGER.info("Connecting to %s:%s...", self.host, self.port)
@@ -133,6 +136,15 @@ class AsyncMQTTClient:
             _LOGGER.info("MQTT listener stopped")
         except Exception as e:
             _LOGGER.error("Error in MQTT listener: %s", e)
+        finally:
+            # Слушатель вышел не по нашей воле → канал мёртв
+            if self._should_run:
+                self._connected = False
+                if self._on_disconnect is not None:
+                    try:
+                        asyncio.create_task(self._on_disconnect())
+                    except Exception as cb_err:
+                        _LOGGER.debug("Error scheduling disconnect handler: %s", cb_err)
 
     async def publish(self, topic: str, payload: bytes, qos: int = 1) -> None:
         """Publish message."""
@@ -170,6 +182,10 @@ class AsyncMQTTClient:
             self._handlers.remove(handler)
             _LOGGER.debug("Removed MQTT handler, remaining: %s", len(self._handlers))
 
+    def set_disconnect_handler(self, callback: Optional[Callable[[], Awaitable[None]]]) -> None:
+        """Set callback, вызываемый при неожиданном разрыве MQTT-соединения."""
+        self._on_disconnect = callback
+            
     @property
     def is_connected(self) -> bool:
         """Check connection status."""

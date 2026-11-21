@@ -10,8 +10,12 @@ from homeassistant.util import dt as dt_util
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import DOMAIN, UPDATE_INTERVAL
+from .liboshome.rest.async_client import NeatsvorSessionClosed
 
 _LOGGER = logging.getLogger(__name__)
+
+INITIAL_REINIT_BACKOFF = 30   # сек
+MAX_REINIT_BACKOFF = 600      # сек (10 мин)
 
 
 class NeatsvorCoordinator(DataUpdateCoordinator):
@@ -43,6 +47,10 @@ class NeatsvorCoordinator(DataUpdateCoordinator):
         self.clean_history_sensor = None
         self.clean_history_select = None
         self.clean_history_camera = None
+        
+        self._reinit_lock = asyncio.Lock()
+        self._reinit_backoff = INITIAL_REINIT_BACKOFF
+        self._reinit_task: Optional[asyncio.Task] = None
 
     async def _async_setup(self):
         """Set up vacuum connection."""
@@ -65,48 +73,111 @@ class NeatsvorCoordinator(DataUpdateCoordinator):
                 _LOGGER.error("Initialization error: %s", err)
                 raise UpdateFailed(f"Initialization error: {err}") from err
 
+    def _schedule_reinit(self) -> None:
+        """Запустить фоновую реинициализацию, если ещё не запущена."""
+        if self._reinit_lock.locked():
+            return
+        if self._reinit_task and not self._reinit_task.done():
+            return
+        self._reinit_task = self.hass.async_create_task(
+            self._async_reinitialize(), name="neatsvor_reinit"
+        )
+        
+    async def _async_reinitialize(self) -> bool:
+        """
+        Внешний retry-цикл реинициализации с exponential backoff.
+        Всегда начинает с REST_LOGIN (вариант A).
+        Не блокирует _async_update_data — координатор отдаёт кэш.
+        """
+        if self._reinit_lock.locked():
+            _LOGGER.debug("Reinit already in progress, skip")
+            return False
+
+        async with self._reinit_lock:
+            backoff = self._reinit_backoff
+            while True:
+                try:
+                    _LOGGER.info("Reinitializing NeatsvorVacuum (backoff %ss)...", backoff)
+                    await self.vacuum.disconnect()
+                    await asyncio.sleep(2)
+                    await self.vacuum.initialize()
+
+                    # Успех
+                    self._reinit_backoff = INITIAL_REINIT_BACKOFF
+                    self._rest_failures = 0
+                    self._last_rest_success = datetime.now()
+                    self._initialized = True
+                    _LOGGER.info("Reinitialization succeeded")
+                    return True
+
+                except asyncio.CancelledError:
+                    raise
+
+                except Exception as err:
+                    # NeatsvorStepNotReady (или любая другая) — логируем и спим.
+                    step = getattr(err, "step", None)
+                    if step is not None:
+                        _LOGGER.warning(
+                            "Init step %s not ready (%s); retry in %ss",
+                            step.value, getattr(err, "cause", err), backoff,
+                        )
+                    else:
+                        _LOGGER.warning("Reinit failed: %s; retry in %ss", err, backoff)
+
+                    await asyncio.sleep(backoff)
+                    backoff = min(backoff * 2, MAX_REINIT_BACKOFF)
+                    self._reinit_backoff = backoff
+                
     async def _ensure_rest_connection(self) -> bool:
-        """Check and restore REST connection."""
+        """Проверить REST-канал. При проблеме — запланировать реинициализацию."""
         if not self.vacuum or not self.vacuum.rest:
-            _LOGGER.warning("REST client missing")
+            _LOGGER.debug("REST client missing, scheduling reinit")
+            self._schedule_reinit()
             return False
 
         try:
-            await self.vacuum.rest.get_devices()
+            await self.vacuum.rest.health_check()
             self._rest_failures = 0
             self._last_rest_success = datetime.now()
             return True
-        except Exception as e:
-            self._rest_failures += 1
-            _LOGGER.warning("REST error (%s/%s): %s", self._rest_failures, self._max_rest_failures, e)
 
-            if self._rest_failures >= self._max_rest_failures:
-                _LOGGER.error("REST connection lost, reconnecting...")
-                await self._reconnect()
-
+        except NeatsvorSessionClosed:
+            _LOGGER.warning("REST session closed, scheduling reinit")
+            self._schedule_reinit()
             return False
 
-    async def _reconnect(self):
-        """Perform full reconnection."""
-        try:
-            _LOGGER.info("Reconnecting...")
-            await self.vacuum.disconnect()
-            await asyncio.sleep(2)
-            await self.vacuum.initialize()
-            self._rest_failures = 0
-            self._last_rest_success = datetime.now()
-            _LOGGER.info("Reconnection successful")
         except Exception as e:
-            _LOGGER.error("Reconnection error: %s", e)
-            self._rest_failures = 0
+            self._rest_failures += 1
+            _LOGGER.warning(
+                "REST error (%s/%s): %s",
+                self._rest_failures, self._max_rest_failures, e,
+            )
+            if self._rest_failures >= self._max_rest_failures:
+                self._schedule_reinit()
+            return False
 
     async def _async_update_data(self) -> Dict[str, Any]:
         """Fetch data from vacuum."""
         try:
             if not self._initialized:
-                await self._async_setup()
+                # Первый старт: ждём setup (HA сам вызовет через _async_setup)
+                if not self.vacuum.is_initialized:
+                    # Если идёт реинициализация — отдаём кэш
+                    if self._reinit_lock.locked():
+                        _LOGGER.debug("Reinit in progress, returning cached data")
+                        return self.data or {}
+                    await self._async_setup()
 
             rest_ok = await self._ensure_rest_connection()
+
+            # Если REST недоступен, но данные MQTT есть — отдаём их как есть.
+            # Если данных вообще нет и реинициализация идёт — пустой dict вместо UpdateFailed.
+            if not rest_ok and not self.data:
+                if self._reinit_lock.locked() or (self._reinit_task and not self._reinit_task.done()):
+                    _LOGGER.debug("No cached data yet, reinit in progress — returning empty")
+                    return {}
+                # Если реинит не идёт и кэша нет — это фатально для setup
+                raise UpdateFailed("REST unavailable and no cached data")
 
             sensors = self.vacuum.state.sensors
 
@@ -228,6 +299,9 @@ class NeatsvorCoordinator(DataUpdateCoordinator):
                         )
                     else:
                         _LOGGER.error("REST data fetch failed and no MQTT data available")
+                    if self.data:
+                        _LOGGER.warning("REST data fetch failed, returning cached data")
+                        return self.data
                     raise UpdateFailed(f"Failed to fetch data: {rest_error}")
 
             return data

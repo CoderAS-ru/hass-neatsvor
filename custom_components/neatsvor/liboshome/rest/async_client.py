@@ -21,7 +21,10 @@ class NeatsvorRestError(Exception):
     """REST API exception."""
     pass
 
-
+class NeatsvorSessionClosed(NeatsvorRestError):
+    """REST-сессия закрыта — требуется реинициализация клиента."""
+    pass
+    
 class NeatsvorRestAsync:
     """
     Asynchronous client for Neatsvor REST API.
@@ -82,10 +85,11 @@ class NeatsvorRestAsync:
 
     async def __aenter__(self):
         """Enter context manager."""
-        self.session = aiohttp.ClientSession(
-            timeout=self.timeout,
-            headers={"User-Agent": self.config['user_agent']}
-        )
+        if self.session is None or self.session.closed:
+            self.session = aiohttp.ClientSession(
+                timeout=self.timeout,
+                headers={"User-Agent": self.config['user_agent']}
+            )
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
@@ -136,17 +140,14 @@ class NeatsvorRestAsync:
     async def _request(self, method: str, path: str, **kwargs) -> Any:
         """
         Execute request WITH iot_token.
-        With automatic session recovery on errors.
+        Raises NeatsvorSessionClosed, если сессия закрыта — вызывающая сторона
+        должна инициировать реинициализацию.
         """
-        if not self.session:
-            self.session = aiohttp.ClientSession(
-                timeout=self.timeout,
-                headers={"User-Agent": self.config['user_agent']}
-            )
+        if self.session is None or self.session.closed:
+            raise NeatsvorSessionClosed("REST session is closed")
 
         url = urljoin(self.config['base_url'], path)
         headers = kwargs.pop("headers", None)
-
         if headers is None:
             headers = self._headers()
 
@@ -154,35 +155,28 @@ class NeatsvorRestAsync:
 
         try:
             async with self.session.request(
-                method=method,
-                url=url,
-                headers=headers,
-                **kwargs
+                method=method, url=url, headers=headers, **kwargs
             ) as response:
                 response.raise_for_status()
                 return await self._api_data(response)
 
         except ClientResponseError as e:
             _LOGGER.error("HTTP error %s: %s", e.status, e.message)
-            
-            # Если сессия закрыта или 401 - пробуем переаутентифицироваться
-            if e.status in (401, 403) or "Session is closed" in str(e):
-                _LOGGER.warning("Session invalid, attempting to re-authenticate")
-                await self.login()
-                await self.login_sdk()
-                # Повторяем запрос один раз
-                return await self._request(method, path, **kwargs)
-            
             raise NeatsvorRestError(f"HTTP {e.status}: {e.message}")
-            
+
+        except NeatsvorSessionClosed:
+            raise
+
         except NeatsvorRestError as e:
-            # Специальная обработка для ошибки 50000
             if "50000" in str(e):
                 _LOGGER.warning("Server error (50000): %s. This is a temporary issue.", e)
                 raise NeatsvorRestError(f"Temporary server error, please retry: {e}")
             raise
-            
+
         except Exception as e:
+            # aiohttp при закрытии сессии кидает RuntimeError("Session is closed")
+            if "Session is closed" in str(e):
+                raise NeatsvorSessionClosed("REST session is closed") from e
             _LOGGER.error("Request failed: %s", e)
             raise NeatsvorRestError(f"Request failed: {e}")
 
@@ -205,7 +199,7 @@ class NeatsvorRestAsync:
         _LOGGER.debug("Base URL: %s", self.config['base_url'])
         _LOGGER.debug("App source: %s", self.config['source'])
 
-        if not self.session:
+        if not self.session or self.session.closed:
             _LOGGER.debug("Creating new session")
             self.session = aiohttp.ClientSession(
                 timeout=self.timeout,
@@ -278,6 +272,8 @@ class NeatsvorRestAsync:
             _LOGGER.error("❌ Login timeout")
             raise
         except Exception as e:
+            if "Session is closed" in str(e):
+                raise NeatsvorSessionClosed("REST session is closed") from e
             _LOGGER.error("❌ Login error: %s", e)
             raise
 
@@ -286,7 +282,7 @@ class NeatsvorRestAsync:
         if not self.app_token:
             raise NeatsvorRestError("login() first")
 
-        if not self.session:
+        if not self.session or self.session.closed:
             self.session = aiohttp.ClientSession(
                 timeout=self.timeout,
                 headers={"User-Agent": self.config['user_agent']}
@@ -319,6 +315,14 @@ class NeatsvorRestAsync:
         _LOGGER.info("SDK OK client_id=%s", self.client_id)
         _LOGGER.debug("Received iot_token: %s...", self.iot_token[:10] if self.iot_token else 'None')
 
+    async def health_check(self) -> None:
+        """
+        Лёгкий health-check REST: подтверждает, что сессия жива и iot_token валиден.
+        Используется в _step_rest_ping() при инициализации.
+        Raises NeatsvorSessionClosed / NeatsvorRestError.
+        """
+        await self._get("/mis/home/query/infoList")
+        
     # ------------------------------------------------------------------
     # DEVICES - USE _get/_post WITH iot_token
     # ------------------------------------------------------------------
@@ -467,7 +471,7 @@ class NeatsvorRestAsync:
         """Download binary map from URL."""
         _LOGGER.info("Downloading map: %s", map_url)
 
-        if not self.session:
+        if self.session is None or self.session.closed:
             self.session = aiohttp.ClientSession(
                 timeout=self.timeout,
                 headers={"User-Agent": self.config['user_agent']}
@@ -485,7 +489,7 @@ class NeatsvorRestAsync:
         """Download cleaning record map data from recordUrl."""
         _LOGGER.info("Loading cleaning data: %s", record_url)
 
-        if not self.session:
+        if self.session is None or self.session.closed:
             self.session = aiohttp.ClientSession(
                 timeout=self.timeout,
                 headers={"User-Agent": self.config['user_agent']}

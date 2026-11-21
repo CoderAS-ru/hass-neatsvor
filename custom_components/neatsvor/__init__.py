@@ -220,14 +220,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     app_type = entry.data.get("app_type", DEFAULT_APP)
     vacuum = NeatsvorVacuum(config, app_type=app_type)
     
-    if not vacuum.is_initialized:
-        await vacuum.initialize()
-    
-    vacuum.set_hass(hass)
-    
     coordinator = NeatsvorCoordinator(hass, vacuum)
+    vacuum.coordinator = coordinator
     
     from .select_storage import NeatsvorSelectStorage
+    
     coordinator.select_storage = NeatsvorSelectStorage(hass, entry.entry_id)
 
     old_storage_path = hass.config.path(f"custom_components/neatsvor/select_states_{entry.entry_id}.json")
@@ -968,23 +965,19 @@ async def _watchdog_loop(hass: HomeAssistant, entry: ConfigEntry, vacuum) -> Non
             if vacuum._ping_failures < WATCHDOG_MAX_FAILURES:
                 continue
 
-            # Порог достигнут — reconnect
+            # Порог достигнут — просим координатор о полной реинициализации.
             _LOGGER.error(
-                "WatchDog: %s ping failures in a row, reconnecting...",
+                "WatchDog: %s ping failures in a row, requesting reinit",
                 vacuum._ping_failures,
             )
-            success = await vacuum.reconnect()
+            vacuum._ping_failures = 0
 
-            if success:
-                vacuum._ping_failures = 0
-                _LOGGER.warning("WatchDog: reconnect completed")
-                try:
-                    coordinator = hass.data[DOMAIN][entry.entry_id]['coordinator']
-                    await coordinator.async_request_refresh()
-                except Exception as e:
-                    _LOGGER.debug("WatchDog: coordinator refresh failed: %s", e)
-            else:
-                _LOGGER.error("WatchDog: reconnect failed, will retry after cooldown")
+            try:
+                coordinator = hass.data[DOMAIN][entry.entry_id]['coordinator']
+                if coordinator and hasattr(coordinator, "_schedule_reinit"):
+                    coordinator._schedule_reinit()
+            except Exception as e:
+                _LOGGER.debug("WatchDog: failed to schedule reinit: %s", e)
 
         except asyncio.CancelledError:
             _LOGGER.info("WatchDog loop cancelled")

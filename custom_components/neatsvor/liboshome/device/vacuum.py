@@ -10,6 +10,8 @@ import gzip
 import tempfile
 import os
 import sys
+import time
+from enum import Enum
 from typing import Dict, Any, Optional, List, Callable, Awaitable, Tuple
 from dataclasses import dataclass
 from pathlib import Path
@@ -34,6 +36,24 @@ from custom_components.neatsvor.liboshome.map.map_utils import calculate_zone_co
 
 _LOGGER = logging.getLogger(__name__)
 
+class InitStep(str, Enum):
+    """Ступени инициализации — для диагностики, где именно упало."""
+    REST_LOGIN = "rest_login"
+    REST_SDK = "rest_sdk"
+    REST_PING = "rest_ping"
+    DEVICE_LIST = "device_list"
+    DP_SCHEMA = "dp_schema"
+    MQTT_CONNECT = "mqtt_connect"
+    MQTT_PING = "mqtt_ping"
+
+
+class NeatsvorStepNotReady(Exception):
+    """Ступень инициализации не пройдена. Координатор поймёт: нужен reinit."""
+
+    def __init__(self, step: InitStep, cause: Optional[Exception] = None):
+        self.step = step
+        self.cause = cause
+        super().__init__(f"Init step {step.value} not ready: {cause}")
 
 @dataclass
 class VacuumInfo:
@@ -176,16 +196,66 @@ class NeatsvorVacuum:
             _LOGGER.info("Visualizer already exists or no hass: %s", self.visualizer is not None)
 
     async def initialize(self) -> bool:
-        """Initialize the vacuum connection."""
-        # Prevent re-initialization
-        if self._initialized:
-            _LOGGER.warning("Vacuum already initialized, skipping")
+        """
+        Инициализация как линейная цепочка health-check'ов.
+        Каждая ступень делает ОДИН health-check и падает с NeatsvorStepNotReady
+        при неудаче. Внешний retry-цикл — в координаторе (backoff).
+        Вариант A: всегда начинаем с REST_LOGIN.
+        """
+        # Идемпотентность: только если всё действительно живо
+        if (
+            self._initialized
+            and self._connected
+            and self.rest is not None
+            and self.mqtt is not None
+            and self.mqtt.is_connected
+        ):
+            _LOGGER.debug("Vacuum already fully initialized, skipping")
             return True
 
-        try:
-            _LOGGER.debug("=== START INITIALIZATION ===")
+        # Гарантированный teardown перед повторной инициализацией
+        if self._initialized or self.rest or self.mqtt:
+            _LOGGER.debug("Tearing down previous state before re-init")
+            await self.disconnect()
 
-            # 1. REST authentication with region from config
+        _LOGGER.debug("=== START INITIALIZATION ===")
+        try:
+            await self._step_rest_login()
+            await self._step_rest_sdk()
+            await self._step_rest_ping()
+            await self._step_device_list()
+            await self._step_dp_schema()
+            await self._step_mqtt_connect()
+            await self._step_mqtt_ping()
+        except NeatsvorStepNotReady:
+            await self.disconnect()
+            raise
+        except asyncio.CancelledError:
+            await self.disconnect()
+            raise
+        except Exception as e:
+            _LOGGER.error("Initialization error: %s", e)
+            await self.disconnect()
+            raise NeatsvorStepNotReady(InitStep.REST_LOGIN, e) from e
+
+        self._initialized = True
+        self._connected = True
+        _LOGGER.info("Basic initialization complete, DP Manager ready")
+
+        # Фоновые задачи — только вне test_mode
+        if not getattr(self, '_test_mode', False):
+            asyncio.create_task(self._request_initial_data())
+            _LOGGER.debug("Initial data request task created")
+
+        return True
+
+    # ------------------------------------------------------------------
+    # Init steps
+    # ------------------------------------------------------------------
+
+    async def _step_rest_login(self) -> None:
+        """STEP 1-3: создать REST-клиент, войти в контекст, login()."""
+        try:
             _LOGGER.debug("STEP 1 - Creating REST client")
             from custom_components.neatsvor.liboshome.rest.async_client import NeatsvorRestAsync
 
@@ -193,7 +263,7 @@ class NeatsvorVacuum:
                 email=self.config.credentials.email,
                 password=self.config.credentials.password,
                 region=self.config.rest.country,
-                app_type=self.app_type
+                app_type=self.app_type,
             )
 
             _LOGGER.debug("STEP 2 - Entering REST context")
@@ -202,12 +272,30 @@ class NeatsvorVacuum:
             _LOGGER.debug("STEP 3 - Performing login()")
             await self.rest.login()
 
+            _LOGGER.info("REST authentication successful, client_id=%s", self.rest.client_id)
+        except NeatsvorStepNotReady:
+            raise
+        except Exception as e:
+            raise NeatsvorStepNotReady(InitStep.REST_LOGIN, e) from e
+
+    async def _step_rest_sdk(self) -> None:
+        """STEP 4: login_sdk() — получить iot_token."""
+        try:
             _LOGGER.debug("STEP 4 - Performing login_sdk()")
             await self.rest.login_sdk()
+        except Exception as e:
+            raise NeatsvorStepNotReady(InitStep.REST_SDK, e) from e
 
-            _LOGGER.info("REST authentication successful, client_id=%s", self.rest.client_id)
+    async def _step_rest_ping(self) -> None:
+        """Health-check REST: сессия жива, iot_token валиден."""
+        try:
+            await self.rest.health_check()
+        except Exception as e:
+            raise NeatsvorStepNotReady(InitStep.REST_PING, e) from e
 
-            # 2. Device information
+    async def _step_device_list(self) -> None:
+        """STEP 5: список устройств, заполнить self.info."""
+        try:
             _LOGGER.debug("STEP 5 - Getting device list")
             devices = await self.rest.get_devices()
             _LOGGER.debug("Found %s devices", len(devices))
@@ -221,11 +309,23 @@ class NeatsvorVacuum:
                 mac=device["macAddress"],
                 pid=device["pId"],
                 name=device.get("deviceName", "Unnamed device"),
-                client_id=self.rest.client_id
+                client_id=self.rest.client_id,
             )
             _LOGGER.info("Device: %s (MAC: %s)", self.info.name, self.info.mac)
 
-            # 3. Load DP schema (CRITICAL)
+            # Кэш картинки устройства — в фоне, не критично
+            try:
+                image_url = device.get("imageUrl")
+                if image_url:
+                    asyncio.create_task(self._cache_device_image(image_url))
+            except Exception as e:
+                _LOGGER.warning("Failed to cache device image: %s", e)
+        except Exception as e:
+            raise NeatsvorStepNotReady(InitStep.DEVICE_LIST, e) from e
+
+    async def _step_dp_schema(self) -> None:
+        """STEP 6: DP-схема + менеджеры карт/истории."""
+        try:
             _LOGGER.debug("STEP 6 - Loading DP schema")
             dp_list = await self.rest.get_device_dp(self.info.device_id, self.info.pid)
             _LOGGER.debug("Received %s DP items", len(dp_list))
@@ -234,41 +334,54 @@ class NeatsvorVacuum:
             self.dp_manager.load_from_api_list(dp_list)
             _LOGGER.info("Loaded DP: %s", len(self.dp_manager))
 
-            # 4. Create managers (fast)
             self.cloud_maps = CloudMapManager(self.rest)
             self.clean_history = CleanHistoryManager(self.rest)
-
-            # 5. Device image (background, non-critical)
-            try:
-                image_url = device.get("imageUrl")
-                if image_url:
-                    asyncio.create_task(self._cache_device_image(image_url))
-            except Exception as e:
-                _LOGGER.warning("Failed to cache device image: %s", e)
-
-            # 6. MQTT connection in background
-            # Проверяем тестовый режим: если включен, не создаем фоновые задачи
-            if getattr(self, '_test_mode', False):
-                _LOGGER.info("Test mode enabled, skipping background MQTT and data tasks")
-            else:
-                asyncio.create_task(self._connect_mqtt_async())
-                _LOGGER.debug("MQTT connection task created")
-
-            self._initialized = True
-            self._connected = True
-            _LOGGER.info("Basic initialization complete, DP Manager ready")
-
-            # 7. Request initial data in background (только если не тестовый режим)
-            if not getattr(self, '_test_mode', False):
-                asyncio.create_task(self._request_initial_data())
-                _LOGGER.debug("Initial data request task created")
-
-            return True
-
         except Exception as e:
-            _LOGGER.error("Initialization error: %s", e)
-            await self.disconnect()
-            raise
+            raise NeatsvorStepNotReady(InitStep.DP_SCHEMA, e) from e
+
+    async def _step_mqtt_connect(self) -> None:
+        """MQTT: создать клиент, подключиться, подписаться, создать encoder/sender."""
+        try:
+            _LOGGER.info("Connecting MQTT...")
+            await self._connect_mqtt()
+        except Exception as e:
+            raise NeatsvorStepNotReady(InitStep.MQTT_CONNECT, e) from e
+
+    async def _step_mqtt_ping(self) -> None:
+        """
+        Health-check MQTT: шлём request_data([8]), ждём до 15 сек.
+        Логика (решение A):
+          - MQTT отвалился во время пинга → NeatsvorStepNotReady(MQTT_PING);
+          - пришло любое сообщение от устройства → OK;
+          - таймаут, но MQTT всё ещё подключён → OK (канал жив, устройство молчит).
+        """
+        before = self.last_message_at
+
+        try:
+            await self.request_data([8])
+        except Exception as e:
+            raise NeatsvorStepNotReady(InitStep.MQTT_PING, e) from e
+
+        deadline = time.time() + 15.0
+        while time.time() < deadline:
+            await asyncio.sleep(1)
+            if not self.mqtt or not self.mqtt.is_connected:
+                raise NeatsvorStepNotReady(
+                    InitStep.MQTT_PING, RuntimeError("mqtt disconnected during ping")
+                )
+            current = self.last_message_at
+            if current is not None and (before is None or current > before):
+                _LOGGER.debug("MQTT ping: got reply")
+                return
+
+        # Таймаут. Если канал всё ещё жив — считаем ступень пройденной.
+        if self.mqtt and self.mqtt.is_connected:
+            _LOGGER.debug("MQTT ping: no reply in 15s, but channel alive — OK")
+            return
+
+        raise NeatsvorStepNotReady(
+            InitStep.MQTT_PING, RuntimeError("ping timeout")
+        )
 
     async def _connect_mqtt_async(self):
         """Connect MQTT in background."""
@@ -330,6 +443,7 @@ class NeatsvorVacuum:
             mac=self.info.mac
         )
         self.mqtt.add_handler(self.router.on_mqtt_message)
+        self.mqtt.set_disconnect_handler(self._on_mqtt_disconnect)
 
         # Register callbacks
         self.router.register_map_callback(self._on_map_data)
@@ -354,40 +468,23 @@ class NeatsvorVacuum:
             command_delay=self.config.device.command_delay
         )
 
+        self._connected = True
         _LOGGER.info("MQTT connected and configured")
 
     async def _on_mqtt_disconnect(self):
-        """Handle MQTT disconnection and reconnect."""
-        _LOGGER.warning("MQTT disconnected, attempting to reconnect...")
+        """
+        Вызывается client_async при неожиданном разрыве MQTT.
+        Не делаем свой retry-цикл: сигнализируем координатору,
+        что нужна полная реинициализация (у неё уже есть backoff).
+        """
+        _LOGGER.warning("MQTT disconnected unexpectedly, requesting reinit")
         self._connected = False
 
-        for attempt in range(5):
-            try:
-                # Exponential backoff: 2, 4, 8, 16, 32 seconds
-                wait_time = 2 ** attempt
-                _LOGGER.info("MQTT reconnect attempt %s/5 in %ss...", attempt + 1, wait_time)
-                await asyncio.sleep(wait_time)
-
-                # Try to reconnect
-                if self.mqtt:
-                    try:
-                        await self.mqtt.disconnect()
-                    except Exception as e:
-                        _LOGGER.debug("Error disconnecting MQTT during reconnect: %s", e)
-                    self.mqtt = None
-
-                await self._connect_mqtt()
-                self._connected = True
-                _LOGGER.info("MQTT reconnected successfully")
-
-                # Request fresh data after reconnection
-                asyncio.create_task(self.request_all_data())
-                return
-
-            except Exception as e:
-                _LOGGER.error("MQTT reconnect attempt %s failed: %s", attempt + 1, e)
-
-        _LOGGER.error("Failed to reconnect MQTT after 5 attempts")
+        coordinator = getattr(self, "coordinator", None)
+        if coordinator is not None and hasattr(coordinator, "_schedule_reinit"):
+            coordinator._schedule_reinit()
+        else:
+            _LOGGER.debug("No coordinator available for reinit signal")
 
     async def disconnect(self) -> None:
         """Disconnect all clients."""
@@ -864,34 +961,27 @@ class NeatsvorVacuum:
     # ------------------------------------------------------------------
 
     async def request_data(self, dp_ids: List[int]) -> bool:
-        """Request data for specified DPs."""
-        try:
-            # Проверяем готовность MQTT
-            if not self._connected or not self._command_sender:
-                _LOGGER.warning("MQTT not connected or command sender not ready, skipping data request")
-                return False
-            
-            _LOGGER.info("Requesting data for %s DPs", len(dp_ids))
+        """Request data for specified DPs. Raises on MQTT failure."""
+        if not self._connected or not self._command_sender:
+            raise ConnectionError("MQTT not connected or command sender not ready")
 
-            header = bvsdk.MqttMsgHeader()
-            header.version = 1
-            header.login_name = self.info.client_id
-            header.cmd_id.extend(dp_ids)
-            header.cmd_type = bvsdk.MqttMsgHeader.CmdType.kAppRequest
+        _LOGGER.info("Requesting data for %s DPs", len(dp_ids))
 
-            msg = bvsdk.MqttMsg()
-            msg.header.CopyFrom(header)
+        header = bvsdk.MqttMsgHeader()
+        header.version = 1
+        header.login_name = self.info.client_id
+        header.cmd_id.extend(dp_ids)
+        header.cmd_type = bvsdk.MqttMsgHeader.CmdType.kAppRequest
 
-            serialized = msg.SerializeToString()
-            compressed = gzip.compress(serialized)
+        msg = bvsdk.MqttMsg()
+        msg.header.CopyFrom(header)
 
-            await self._command_sender.publish_command(compressed)
-            _LOGGER.info("Data request sent")
-            return True
+        serialized = msg.SerializeToString()
+        compressed = gzip.compress(serialized)
 
-        except Exception as e:
-            _LOGGER.error("Error requesting data: %s", e)
-            return False
+        await self._command_sender.publish_command(compressed)
+        _LOGGER.info("Data request sent")
+        return True
 
     async def request_all_data(self) -> bool:
         """Request all data like the official app."""
@@ -1399,25 +1489,13 @@ class NeatsvorVacuum:
                 self._reconnect_count,
             )
 
-            try:
-                await asyncio.wait_for(self.disconnect(), timeout=30.0)
-            except asyncio.TimeoutError:
-                _LOGGER.error("WatchDog: disconnect() timed out, forcing continue")
-                self._connected = False
-                self._initialized = False
-                self.mqtt = None
-                self.router = None
-                self._command_sender = None
-                self._encoder = None
-                self.rest = None
-
+            # initialize() сам делает teardown, если нужно.
+            # Не оборачиваем в wait_for: внутри initialize() уже есть
+            # таймауты на уровне aiohttp, а _step_mqtt_ping ждёт 15с.
+            # Жёсткий wait_for(60s) обрывал бы инициализацию на середине
+            # при медленном облаке.
             await asyncio.sleep(2)
-
-            try:
-                await asyncio.wait_for(self.initialize(), timeout=60.0)
-            except asyncio.TimeoutError:
-                _LOGGER.error("WatchDog: initialize() timed out")
-                return False
+            await self.initialize()
 
             # Сбрасываем счётчики после успешного reconnect
             self._ping_failures = 0

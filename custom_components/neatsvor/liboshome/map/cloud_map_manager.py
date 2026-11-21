@@ -10,6 +10,7 @@ from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 
 from custom_components.neatsvor.liboshome.map.map_decoder import MapDecoder
+from custom_components.neatsvor.liboshome.rest.async_client import NeatsvorSessionClosed
 from custom_components.neatsvor.liboshome.map.map_renderer import MapRenderer
 from custom_components.neatsvor.liboshome.map.map_utils import extract_room_presets
 from .map_cache import get_map_cache
@@ -105,6 +106,10 @@ class CloudMapManager:
             _LOGGER.info("Created %s map entries (metadata lazy-loaded)", len(cloud_maps))
 
             return cloud_maps
+
+        except NeatsvorSessionClosed:
+            # Сессия закрыта — пробрасываем наверх, координатор сделает reinit
+            raise
 
         except Exception as e:
             error_str = str(e)
