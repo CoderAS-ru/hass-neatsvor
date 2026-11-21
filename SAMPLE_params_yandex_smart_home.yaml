@@ -1,64 +1,108 @@
 filter:
   include_entities:
-    - vacuum.neatsvor_<device_id>_vacuum
-    - sensor.neatsvor_<device_id>_filter
-    - sensor.neatsvor_<device_id>_main_brush
-    - sensor.neatsvor_<device_id>_side_brush
-    - sensor.neatsvor_<device_id>_total_clean_area
-    - sensor.neatsvor_<device_id>_total_clean_time
-    - sensor.neatsvor_<device_id>_last_clean_area
-    - sensor.neatsvor_<device_id>_last_clean_duration
+    - vacuum.<device_id>_smart_vacuum
+    - sensor.<device_id>_hepa_filter
+    - sensor.<device_id>_main_brush
+    - sensor.<device_id>_side_brush
+    - sensor.<device_id>_total_clean_area
+    - sensor.<device_id>_total_clean_time
+    - sensor.<device_id>_last_clean_area
+    - sensor.<device_id>_last_clean_duration
+    - script.uborka_kuhni
+    - script.uborka_gostinnoj
+    - script.uborka_detskoj
+    - script.uborka_koridora
 
-entity_config:
-#====== neatsvor_<device_id>_vacuum ==========
+entity_config:        
+#====== <device_id>_smart_vacuum ==========
 
-  vacuum.neatsvor_<device_id>_vacuum:
+  vacuum.<device_id>_smart_vacuum:
     name: Пылесос Neatsvor
     properties:
       - type: battery_level
-        entity: vacuum.neatsvor_<device_id>_vacuum
+        entity: vacuum.<device_id>_smart_vacuum
         attribute: battery_level
-
-  sensor.neatsvor_<device_id>_filter:
+    # 1. Таблица соответствия режимов УДЯ и значений в вашем HA
+    modes:
+      fan_speed:
+        slow: 'Тихий'
+        medium: 'Обычный'
+        fast: 'Сильный'
+        turbo: 'Максимальный'
+      work_speed:
+        min: 'Низкий'
+        medium: 'Средний'
+        max: 'Высокий'
+      cleanup_mode:
+        dry_cleaning: 'Только подмести'
+        wet_cleaning: 'Только мыть'
+        mixed_cleaning: 'Подмести и вымыть'
+    # 2. Определение действий для пользовательских режимов
+    custom_modes:
+      fan_speed:
+        # Откуда брать текущее состояние для отображения в УДЯ
+        state_entity_id: select.<device_id>_fan_speed
+        # Вызываемое действие при выборе режима в УДЯ
+        set_mode:
+          action: select.select_option
+          entity_id: select.<device_id>_fan_speed
+          data:
+            option: '{{ mode }}'  # Сюда подставится 'Тихий', 'Обычный', 'Сильный' или 'Максимальный'
+      work_speed:
+        # Откуда брать текущее состояние для отображения в УДЯ
+        state_entity_id: select.<device_id>_water_level
+        # Вызываемое действие при выборе режима в УДЯ
+        set_mode:
+          action: select.select_option
+          entity_id: select.<device_id>_water_level
+          data:
+            option: '{{ mode }}'  # Сюда подставится 'Низкий', 'Средний' или 'Высокий'
+      cleanup_mode:
+        state_entity_id: select.<device_id>_clean_mode
+        set_mode:
+          action: select.select_option
+          entity_id: select.<device_id>_clean_mode
+          data:
+            option: '{{ mode }}'
+  
+  sensor.<device_id>_hepa_filter:
     name: HEPA фильтр
     properties:
       - type: float.meter
-        entity: sensor.neatsvor_<device_id>_filter
+        entity: sensor.<device_id>_hepa_filter
 
-  sensor.neatsvor_<device_id>_main_brush:
+  sensor.<device_id>_main_brush:
     name: Основная щётка
     properties:
       - type: float.meter
-        entity: sensor.neatsvor_<device_id>_main_brush
+        entity: sensor.<device_id>_main_brush
 
-  sensor.neatsvor_<device_id>_side_brush:
+  sensor.<device_id>_side_brush:
     name: Боковая щётка
     properties:
       - type: float.meter
-        entity: sensor.neatsvor_<device_id>_side_brush
+        entity: sensor.<device_id>_side_brush
 
-  sensor.neatsvor_<device_id>_total_clean_area:
+  sensor.<device_id>_total_clean_area:
     name: Общая площадь уборки
     properties:
       - type: float.meter
-        entity: sensor.neatsvor_<device_id>_total_clean_area
+        entity: sensor.<device_id>_total_clean_area
 
-  sensor.neatsvor_<device_id>_total_clean_time:
+  sensor.<device_id>_total_clean_time:
     name: Общее время уборки
     properties:
       - type: float.meter
-        entity: sensor.neatsvor_<device_id>_total_clean_time
+        entity: sensor.<device_id>_total_clean_time
 
-  sensor.neatsvor_<device_id>_last_clean_area:
+  sensor.<device_id>_last_clean_area:
     name: Площадь последней уборки
     properties:
       - type: float.meter
-        entity: sensor.neatsvor_<device_id>_last_clean_area
+        entity: sensor.<device_id>_last_clean_area
 
-  sensor.neatsvor_<device_id>_last_clean_duration:
+  sensor.<device_id>_last_clean_duration:
     name: Время последней уборки
     properties:
       - type: float.meter
-        entity: sensor.neatsvor_<device_id>_last_clean_duration
-
-#====== neatsvor_<device_id>_vacuum ==========
+        entity: sensor.<device_id>_last_clean_duration
